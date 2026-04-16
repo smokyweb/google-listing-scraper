@@ -14,6 +14,9 @@ import Settings from './pages/Settings';
 import PhoneNumbers from './pages/PhoneNumbers';
 import ScrapeHistory from './pages/ScrapeHistory';
 import ScrapeDetail from './pages/ScrapeDetail';
+import VoiceMessage from './pages/VoiceMessage';
+import Callbacks from './pages/Callbacks';
+import SMSInbox from './pages/SMSInbox';
 
 function Layout({ children }) {
   return (
@@ -55,6 +58,9 @@ export default function App() {
       <Route path="/email" element={<Layout><EmailCampaign /></Layout>} />
       <Route path="/calls" element={<Layout><PhoneCalls /></Layout>} />
       <Route path="/sms" element={<Layout><SMS /></Layout>} />
+      <Route path="/voice" element={<Layout><VoiceMessage /></Layout>} />
+      <Route path="/callbacks" element={<Layout><Callbacks /></Layout>} />
+      <Route path="/sms-inbox" element={<Layout><SMSInbox /></Layout>} />
       <Route path="/phone-numbers" element={<Layout><PhoneNumbers /></Layout>} />
       <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
       <Route path="/settings" element={<Layout><Settings /></Layout>} />

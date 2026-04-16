@@ -43,6 +43,27 @@ router.get('/export', authMiddleware, (req, res) => {
   res.send(csv);
 });
 
+router.post('/', authMiddleware, (req, res) => {
+  const { name, phone, email, website, address, city, state, keyword, scrape_id } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const result = db.prepare(`
+    INSERT INTO leads (name, phone, email, website, address, city, state, keyword, scrape_id, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')
+  `).run(name, phone||'', email||'', website||'', address||'', city||'', state||'', keyword||'', scrape_id||null);
+  res.status(201).json({ id: result.lastInsertRowid, name, phone, email, website, address, city, state, keyword, source: 'manual' });
+});
+
+router.patch('/:id', authMiddleware, (req, res) => {
+  const { name, phone, email, website, address, city, state, keyword, unsubscribed } = req.body;
+  const existing = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Not found' });
+  db.prepare(`UPDATE leads SET name=?, phone=?, email=?, website=?, address=?, city=?, state=?, keyword=?, unsubscribed=? WHERE id=?`)
+    .run(name??existing.name, phone??existing.phone, email??existing.email, website??existing.website,
+         address??existing.address, city??existing.city, state??existing.state, keyword??existing.keyword,
+         unsubscribed??existing.unsubscribed, req.params.id);
+  res.json({ success: true });
+});
+
 router.delete('/:id', authMiddleware, (req, res) => {
   db.prepare('DELETE FROM leads WHERE id = ?').run(req.params.id);
   res.json({ success: true });

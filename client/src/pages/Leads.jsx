@@ -3,6 +3,56 @@ import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api';
 import LeadsTable from '../components/LeadsTable';
 
+function AddLeadModal({ scrapes, onClose, onSaved }) {
+  const [form, setForm] = useState({ name: '', phone: '', email: '', website: '', address: '', city: '', state: '', keyword: '', scrape_id: '' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const handle = async (e) => {
+    e.preventDefault();
+    if (!form.name) return setErr('Name is required');
+    setSaving(true);
+    try {
+      await apiFetch('/leads', { method: 'POST', body: JSON.stringify({ ...form, scrape_id: form.scrape_id || null }) });
+      onSaved();
+    } catch (e) { setErr(e.message); setSaving(false); }
+  };
+  const f = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }));
+  const inp = 'w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500';
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Add Lead Manually</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        {err && <p className="text-red-400 text-sm mb-3">{err}</p>}
+        <form onSubmit={handle} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2"><label className="text-xs text-gray-400">Name *</label><input value={form.name} onChange={f('name')} required className={inp} /></div>
+            <div><label className="text-xs text-gray-400">Phone</label><input value={form.phone} onChange={f('phone')} className={inp} /></div>
+            <div><label className="text-xs text-gray-400">Email</label><input value={form.email} onChange={f('email')} type="email" className={inp} /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-400">Website</label><input value={form.website} onChange={f('website')} className={inp} /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-400">Address</label><input value={form.address} onChange={f('address')} className={inp} /></div>
+            <div><label className="text-xs text-gray-400">City</label><input value={form.city} onChange={f('city')} className={inp} /></div>
+            <div><label className="text-xs text-gray-400">State</label><input value={form.state} onChange={f('state')} className={inp} /></div>
+            <div><label className="text-xs text-gray-400">Keyword</label><input value={form.keyword} onChange={f('keyword')} className={inp} /></div>
+            <div><label className="text-xs text-gray-400">Assign to Scrape</label>
+              <select value={form.scrape_id} onChange={f('scrape_id')} className={inp}>
+                <option value="">None (manual)</option>
+                {scrapes.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">{saving ? 'Saving...' : 'Add Lead'}</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Leads() {
   const [leads, setLeads] = useState([]);
   const [total, setTotal] = useState(0);
@@ -13,6 +63,7 @@ export default function Leads() {
   const [selectedScrapeId, setSelectedScrapeId] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showAddModal, setShowAddModal] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -83,17 +134,14 @@ export default function Leads() {
         </h2>
         <div className="flex gap-2">
           {selectedScrapeId && (
-            <button
-              onClick={() => navigate(`/scrapes/${selectedScrapeId}`)}
-              className="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-sm transition-colors"
-            >
+            <button onClick={() => navigate(`/scrapes/${selectedScrapeId}`)} className="px-4 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-lg text-sm transition-colors">
               View Scrape Detail →
             </button>
           )}
-          <button
-            onClick={handleExport}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-          >
+          <button onClick={() => setShowAddModal(true)} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-medium transition-colors">
+            + Add Lead
+          </button>
+          <button onClick={handleExport} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors">
             Export CSV
           </button>
         </div>
@@ -149,6 +197,7 @@ export default function Leads() {
           <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-3 py-1 bg-gray-800 text-gray-300 rounded disabled:opacity-50">Next</button>
         </div>
       )}
+      {showAddModal && <AddLeadModal scrapes={scrapes} onClose={() => setShowAddModal(false)} onSaved={() => { setShowAddModal(false); fetchLeads(); }} />}
     </div>
   );
 }

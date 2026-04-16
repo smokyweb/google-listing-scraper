@@ -70,11 +70,53 @@ db.exec(`
     is_default INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS callbacks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    lead_name TEXT,
+    phone TEXT,
+    raw_speech TEXT,
+    status TEXT DEFAULT 'pending',
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sms_inbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    from_number TEXT NOT NULL,
+    to_number TEXT,
+    message TEXT,
+    direction TEXT DEFAULT 'inbound',
+    read_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS ivr_sessions (
+    call_sid TEXT PRIMARY KEY,
+    lead_id INTEGER,
+    lead_phone TEXT,
+    step TEXT DEFAULT 'menu',
+    data TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS voice_scripts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    script TEXT NOT NULL,
+    is_active INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 // Migrations — add columns to existing tables if they don't exist
 try { db.exec('ALTER TABLE leads ADD COLUMN scrape_id INTEGER REFERENCES scrapes(id)'); } catch(e) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN email_scraped INTEGER DEFAULT 0'); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN unsubscribed INTEGER DEFAULT 0"); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'scraped'"); } catch(e) {}
 
 // Seed default phone number from env if none exist
 const existingNumbers = db.prepare('SELECT COUNT(*) as count FROM phone_numbers').get();

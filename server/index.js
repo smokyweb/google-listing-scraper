@@ -24,6 +24,12 @@ app.use('/api/stats', require('./routes/stats'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/phone-numbers', require('./routes/phone-numbers'));
 app.use('/api/scrapes', require('./routes/scrapes'));
+app.use('/api/voice-scripts', require('./routes/voice-scripts'));
+app.use('/api/callbacks', require('./routes/callbacks'));
+// SignalWire webhooks (no auth) — must be before authMiddleware
+app.post('/api/calls/ivr-handler', require('./routes/calls').ivr || ((req, res, next) => next()));
+app.post('/api/calls/ivr-callback', require('./routes/calls').ivrCallback || ((req, res, next) => next()));
+app.post('/api/sms/incoming', require('./routes/sms').incoming || ((req, res, next) => next()));
 
 // SPA fallback
 app.get('*', (req, res) => {
