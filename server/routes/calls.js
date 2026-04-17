@@ -1,4 +1,4 @@
-const router = require('express').Router();
+﻿const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { google } = require('googleapis');
@@ -17,7 +17,7 @@ async function generateElevenLabsAudio(text, config, baseUrl) {
     const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config.voiceId}`, {
       method: 'POST',
       headers: { 'xi-api-key': config.apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 }, speed: 0.85 }),
     });
     if (!resp.ok) throw new Error(`ElevenLabs ${resp.status}`);
     const buffer = Buffer.from(await resp.arrayBuffer());
@@ -223,7 +223,7 @@ function formatDate(slot) {
   return slot.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
-// ─── TTS PREVIEW ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ TTS PREVIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/tts-preview', authMiddleware, async (req, res) => {
   try {
     const { text } = req.body;
@@ -233,7 +233,7 @@ router.post('/tts-preview', authMiddleware, async (req, res) => {
     const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config.voiceId}`, {
       method: 'POST',
       headers: { 'xi-api-key': config.apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 }, speed: 0.85 }),
     });
     if (!resp.ok) throw new Error(`ElevenLabs error: ${resp.status}`);
     res.setHeader('Content-Type', 'audio/mpeg');
@@ -243,7 +243,7 @@ router.post('/tts-preview', authMiddleware, async (req, res) => {
   }
 });
 
-// ─── TRIGGER OUTBOUND CALLS ────────────────────────────────────────────────────
+// â”€â”€â”€ TRIGGER OUTBOUND CALLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/trigger', authMiddleware, async (req, res) => {
   try {
     const { script, leadIds, phoneNumberId } = req.body;
@@ -322,7 +322,7 @@ router.post('/trigger', authMiddleware, async (req, res) => {
             calledCount++;
           } else {
             const errBody = await callResp.text();
-            const errMsg = `${lead.name} (${toPhone}): HTTP ${callResp.status} — ${errBody.substring(0, 200)}`;
+            const errMsg = `${lead.name} (${toPhone}): HTTP ${callResp.status} â€” ${errBody.substring(0, 200)}`;
             errors.push(errMsg);
             console.error('[CALL FAILED]', errMsg);
           }
@@ -336,7 +336,7 @@ router.post('/trigger', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── IVR HANDLER (DTMF from outbound call) ─────────────────────────────────────
+// â”€â”€â”€ IVR HANDLER (DTMF from outbound call) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-handler', async (req, res) => {
   const digit = req.body.Digits;
   const callSid = req.body.CallSid || 'unknown';
@@ -382,7 +382,7 @@ router.post('/ivr-handler', async (req, res) => {
     ${say('Goodbye.')} <Hangup/>`));
 });
 
-// ─── IVR CALLBACK (spoken callback time) ──────────────────────────────────────
+// â”€â”€â”€ IVR CALLBACK (spoken callback time) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-callback', (req, res) => {
   const speech = req.body.SpeechResult || 'not provided';
   const fromPhone = req.body.To || req.body.From || '';
@@ -392,7 +392,7 @@ router.post('/ivr-callback', (req, res) => {
   return res.type('text/xml').send(twiml(`${say(`Thank you. We will call you back ${speech}. Goodbye.`)} <Hangup/>`));
 });
 
-// ─── IVR CALENDAR: ask day ─────────────────────────────────────────────────────
+// â”€â”€â”€ IVR CALENDAR: ask day â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-calendar-day', async (req, res) => {
   const speech = req.body.SpeechResult || '';
   const callSid = req.body.CallSid || 'unknown';
@@ -429,7 +429,7 @@ router.post('/ivr-calendar-day', async (req, res) => {
     ${say('Goodbye.')} <Hangup/>`));
 });
 
-// ─── IVR CALENDAR: pick slot ───────────────────────────────────────────────────
+// â”€â”€â”€ IVR CALENDAR: pick slot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-calendar-slot', (req, res) => {
   const digit = req.body.Digits;
   const callSid = req.body.CallSid || 'unknown';
@@ -464,7 +464,7 @@ router.post('/ivr-calendar-slot', (req, res) => {
   }
 });
 
-// ─── IVR CALENDAR: confirm email ──────────────────────────────────────────────
+// â”€â”€â”€ IVR CALENDAR: confirm email â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-calendar-email-confirm', async (req, res) => {
   const digit = req.body.Digits;
   const callSid = req.body.CallSid || 'unknown';
@@ -485,7 +485,7 @@ router.post('/ivr-calendar-email-confirm', async (req, res) => {
   await finishCalendarBooking(res, session, lead, lead?.email);
 });
 
-// ─── IVR CALENDAR: new email ──────────────────────────────────────────────────
+// â”€â”€â”€ IVR CALENDAR: new email â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-calendar-email-new', async (req, res) => {
   const speech = req.body.SpeechResult || '';
   const callSid = req.body.CallSid || 'unknown';
@@ -522,12 +522,12 @@ async function finishCalendarBooking(res, session, lead, email) {
   }
 }
 
-// ─── RECORDING DONE (voicemail) ──────────────────────────────────────────────
+// â”€â”€â”€ RECORDING DONE (voicemail) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/recording-done', (req, res) => {
   res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Thank you for your message. We will call you back shortly. Goodbye.</Say><Hangup/></Response>');
 });
 
-// ─── EMAIL SCRAPER REFRESH ─────────────────────────────────────────────────────
+// â”€â”€â”€ EMAIL SCRAPER REFRESH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
   try {
     const leads = db.prepare('SELECT * FROM leads WHERE scrape_id = ? AND website != ""').all(req.params.scrapeId);
@@ -550,3 +550,5 @@ router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
+
