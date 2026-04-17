@@ -43,7 +43,16 @@ router.post('/send', authMiddleware, async (req, res) => {
     const { subject, body, leadIds } = req.body;
     if (!subject || !body) return res.status(400).json({ error: 'subject and body are required' });
 
-    const smtpFrom = process.env.SMTP_FROM || getSetting('smtp_from') || 'noreply@example.com';
+    // Use selected sender or default sender from email_senders table
+    const { senderId } = req.body;
+    let smtpFrom = process.env.SMTP_FROM || getSetting('smtp_from') || 'noreply@example.com';
+    if (senderId) {
+      const sender = db.prepare('SELECT * FROM email_senders WHERE id=?').get(senderId);
+      if (sender) smtpFrom = sender.name ? `${sender.name} <${sender.email}>` : sender.email;
+    } else {
+      const defSender = db.prepare('SELECT * FROM email_senders WHERE is_default=1 LIMIT 1').get();
+      if (defSender) smtpFrom = defSender.name ? `${defSender.name} <${defSender.email}>` : defSender.email;
+    }
     const config = getSmtpConfig();
     const isMock = !config.host;
     const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';

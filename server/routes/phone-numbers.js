@@ -87,4 +87,35 @@ router.post('/:id/set-default', authMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
+// GET /api/phone-numbers/sync — pull all numbers from SignalWire and import new ones
+router.post('/sync', authMiddleware, async (req, res) => {
+  try {
+    const projectId = process.env.SIGNALWIRE_PROJECT_ID || db.prepare("SELECT value FROM settings WHERE key='signalwire_project_id'").get()?.value;
+    const token = process.env.SIGNALWIRE_TOKEN || db.prepare("SELECT value FROM settings WHERE key='signalwire_token'").get()?.value;
+    const spaceUrl = process.env.SIGNALWIRE_SPACE_URL || db.prepare("SELECT value FROM settings WHERE key='signalwire_space_url'").get()?.value;
+    if (!projectId || !token || !spaceUrl) return res.status(400).json({ error: 'SignalWire credentials not configured' });
+
+    const authHeader = 'Basic ' + Buffer.from(`${projectId}:${token}`).toString('base64');
+    const resp = await fetch(`https://${spaceUrl}/api/laml/2010-04-01/Accounts/${projectId}/IncomingPhoneNumbers.json?PageSize=100`, {
+      headers: { 'Authorization': authHeader, 'Accept': 'application/json' },
+    });
+    if (!resp.ok) throw new Error(`SignalWire API error: ${resp.status}`);
+    const data = await resp.json();
+    const swNumbers = data.incoming_phone_numbers || [];
+
+    let added = 0, skipped = 0;
+    const upsert = db.prepare('INSERT OR IGNORE INTO phone_numbers (label, number, provider) VALUES (?, ?, ?)');
+    for (const num of swNumbers) {
+      const e164 = num.phone_number;
+      const label = num.friendly_name || e164;
+      const r = upsert.run(label, e164, 'signalwire');
+      if (r.changes > 0) added++; else skipped++;
+    }
+    res.json({ synced: swNumbers.length, added, skipped });
+  } catch (err) {
+    console.error('SignalWire sync error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

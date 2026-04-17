@@ -8,6 +8,7 @@ const nav = [
   { to: '/leads', label: 'Leads', icon: '👥' },
   { to: '/import', label: 'Import Leads', icon: '📂' },
   { to: '/email', label: 'Email Campaign', icon: '✉️' },
+  { to: '/email-senders', label: 'Email Senders', icon: '📧' },
   { to: '/calls', label: 'Phone Calls', icon: '📞' },
   { to: '/dialer', label: 'Dialer', icon: '☎️' },
   { to: '/voice', label: 'Voice Message', icon: '🎙️' },

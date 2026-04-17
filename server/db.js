@@ -146,6 +146,15 @@ db.exec(`
     ip TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS email_senders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    name TEXT,
+    is_default INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS sms_deliveries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     lead_id INTEGER,

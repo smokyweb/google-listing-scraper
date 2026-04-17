@@ -15,12 +15,15 @@ export default function EmailCampaign() {
   const [showPreview, setShowPreview] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateMsg, setTemplateMsg] = useState(null);
+  const [senders, setSenders] = useState([]);
+  const [selectedSenderId, setSelectedSenderId] = useState('');
 
   const loadTemplates = () => apiFetch('/email-templates').then(setTemplates).catch(() => {});
 
   useEffect(() => {
     apiFetch('/leads?limit=500').then(data => setLeads(data.leads.filter(l => l.email))).catch(console.error);
     loadTemplates();
+    apiFetch('/email-senders').then(data => { setSenders(data); const def=data.find(s=>s.is_default); if(def) setSelectedSenderId(String(def.id)); }).catch(()=>{});
   }, []);
 
   const handleTemplateSelect = (id) => {
@@ -57,7 +60,7 @@ export default function EmailCampaign() {
   const handleSend = async () => {
     setSending(true); setResult(null);
     try {
-      const data = await apiFetch('/email/send', { method:'POST', body: JSON.stringify({ subject, body, leadIds: selectedIds.size > 0 ? [...selectedIds] : undefined }) });
+      const data = await apiFetch('/email/send', { method:'POST', body: JSON.stringify({ subject, body, leadIds: selectedIds.size > 0 ? [...selectedIds] : undefined, senderId: selectedSenderId || undefined }) });
       setResult(data);
     } catch(err) { setResult({ error: err.message }); }
     finally { setSending(false); }
@@ -75,6 +78,18 @@ export default function EmailCampaign() {
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
           <h3 className="text-lg font-semibold text-white">Compose Email</h3>
           <p className="text-xs text-gray-500">Placeholders: {'{business_name}'} {'{city}'} {'{state}'} {'{keyword}'}</p>
+
+          {/* From sender */}
+          {senders.length > 0 && (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">From</label>
+              <select value={selectedSenderId} onChange={e=>setSelectedSenderId(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                <option value="">Use SMTP default</option>
+                {senders.map(s=><option key={s.id} value={String(s.id)}>{s.label} — {s.email}{s.is_default?' (default)':''}</option>)}
+              </select>
+            </div>
+          )}
 
           {/* Template management */}
           <div className="bg-gray-800/60 rounded-lg p-4 space-y-3">

@@ -21,6 +21,7 @@ import SalesUsers from './pages/SalesUsers';
 import VoicemailDrop from './pages/VoicemailDrop';
 import ImportLeads from './pages/ImportLeads';
 import Dialer from './pages/Dialer';
+import EmailSenders from './pages/EmailSenders';
 
 function Layout({ children }) {
   return (
@@ -69,6 +70,7 @@ export default function App() {
       <Route path="/voicemail-drop" element={<Layout><VoicemailDrop /></Layout>} />
       <Route path="/import" element={<Layout><ImportLeads /></Layout>} />
       <Route path="/dialer" element={<Layout><Dialer /></Layout>} />
+      <Route path="/email-senders" element={<Layout><EmailSenders /></Layout>} />
       <Route path="/phone-numbers" element={<Layout><PhoneNumbers /></Layout>} />
       <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
       <Route path="/settings" element={<Layout><Settings /></Layout>} />

@@ -8,6 +8,18 @@ export default function PhoneNumbers() {
   const [form, setForm] = useState({ label: '', number: '', provider: 'signalwire', is_default: false });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const data = await apiFetch('/phone-numbers/sync', { method: 'POST' });
+      setMessage({ type: 'success', text: `Synced from SignalWire: ${data.added} new number(s) added, ${data.skipped} already existed.` });
+      load();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally { setSyncing(false); }
+  };
 
   const load = () => {
     apiFetch('/phone-numbers')
@@ -62,12 +74,16 @@ export default function PhoneNumbers() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-white">Phone Numbers</h2>
-        <button
-          onClick={() => setShowAdd(!showAdd)}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-        >
-          + Add Phone Number
-        </button>
+        <div className="flex gap-2">
+          <button onClick={handleSync} disabled={syncing}
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+            {syncing ? 'Syncing...' : '🔄 Sync from SignalWire'}
+          </button>
+          <button onClick={() => setShowAdd(!showAdd)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
+            + Add Phone Number
+          </button>
+        </div>
       </div>
 
       {message && (
