@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api';
 import LeadsTable from '../components/LeadsTable';
+import EditLeadModal from '../components/EditLeadModal';
 
 function AddLeadModal({ scrapes, onClose, onSaved }) {
   const [form, setForm] = useState({ name: '', phone: '', email: '', website: '', address: '', city: '', state: '', keyword: '', scrape_id: '' });
@@ -63,6 +64,8 @@ export default function Leads() {
   const [selectedScrapeId, setSelectedScrapeId] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [editingLead, setEditingLead] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const navigate = useNavigate();
 
@@ -88,6 +91,34 @@ export default function Leads() {
   };
 
   useEffect(() => { fetchLeads(); }, [page, search, selectedScrapeId]);
+
+  const handleDeleteLead = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this lead?')) return;
+    try {
+      await apiFetch(`/leads/${id}`, { method: 'DELETE' });
+      fetchLeads(); // Refresh leads after deletion
+    } catch (error) {
+      console.error('Failed to delete lead:', error);
+      alert('Failed to delete lead.');
+    }
+  };
+
+  const handleEditLead = (lead) => {
+    setEditingLead(lead);
+    setShowEditModal(true);
+  };
+
+  const handleSaveLead = (updatedLead) => {
+    // Optionally update leads in state directly or refetch
+    fetchLeads();
+    setEditingLead(null);
+    setShowEditModal(false);
+  };
+
+  const handleCloseEditModal = () => {
+    setEditingLead(null);
+    setShowEditModal(false);
+  };
 
   const handleExport = async () => {
     // If filtering by scrape, export that scrape's CSV
@@ -186,6 +217,8 @@ export default function Leads() {
             onToggleSelect={toggleSelect}
             onToggleAll={toggleAll}
             showSelect={true}
+            onEdit={handleEditLead}
+            onDelete={handleDeleteLead}
           />
         )}
       </div>
@@ -197,7 +230,16 @@ export default function Leads() {
           <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page === pages} className="px-3 py-1 bg-gray-800 text-gray-300 rounded disabled:opacity-50">Next</button>
         </div>
       )}
+
       {showAddModal && <AddLeadModal scrapes={scrapes} onClose={() => setShowAddModal(false)} onSaved={() => { setShowAddModal(false); fetchLeads(); }} />}
+
+      {showEditModal && (
+        <EditLeadModal
+          lead={editingLead}
+          onClose={handleCloseEditModal}
+          onSave={handleSaveLead}
+        />
+      )}
     </div>
   );
 }
