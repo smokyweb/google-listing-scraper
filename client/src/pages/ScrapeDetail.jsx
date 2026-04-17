@@ -33,7 +33,7 @@ export default function ScrapeDetail() {
   };
 
   const handleExport = () => {
-    const token = localStorage.getItem('gls_token');
+    const token = localStorage.getItem('token');
     window.open(`/api/scrapes/${id}/export`, '_blank');
   };
 

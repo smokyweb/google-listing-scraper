@@ -22,7 +22,7 @@ export default function ScrapeHistory() {
   };
 
   const handleExport = (id) => {
-    const token = localStorage.getItem('gls_token');
+    const token = localStorage.getItem('token');
     window.open(`/api/scrapes/${id}/export?token=${token}`, '_blank');
   };
 

@@ -91,7 +91,7 @@ export default function VoiceMessage() {
         .replace(/{city}/g, 'Austin').replace(/{state}/g, 'TX')
         .replace(/{keyword}/g, 'plumber').replace(/{phone}/g, '555-123-4567')
         .replace(/{email}/g, 'info@acmeplumbing.com');
-      const token = localStorage.getItem('gls_token');
+      const token = localStorage.getItem('token');
       const resp = await fetch('/api/calls/tts-preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },

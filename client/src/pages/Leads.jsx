@@ -95,7 +95,7 @@ export default function Leads() {
       window.open(`/api/scrapes/${selectedScrapeId}/export`, '_blank');
       return;
     }
-    const token = localStorage.getItem('gls_token');
+    const token = localStorage.getItem('token');
     const res = await fetch('/api/leads/export', {
       headers: { 'Authorization': `Bearer ${token}` },
     });
