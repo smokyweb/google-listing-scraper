@@ -3,6 +3,34 @@ const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { google } = require('googleapis');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
+
+// Ensure audio directory exists for ElevenLabs pre-generated files
+const AUDIO_DIR = path.join(__dirname, '..', '..', 'data', 'audio');
+fs.mkdirSync(AUDIO_DIR, { recursive: true });
+
+// Generate ElevenLabs TTS and save to a file, return public URL
+async function generateElevenLabsAudio(text, config, baseUrl) {
+  if (!config.apiKey) return null;
+  try {
+    const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config.voiceId}`, {
+      method: 'POST',
+      headers: { 'xi-api-key': config.apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+      body: JSON.stringify({ text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+    });
+    if (!resp.ok) throw new Error(`ElevenLabs ${resp.status}`);
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    const filename = `call_${uuidv4()}.mp3`;
+    fs.writeFileSync(path.join(AUDIO_DIR, filename), buffer);
+    // Clean up after 1 hour
+    setTimeout(() => { try { fs.unlinkSync(path.join(AUDIO_DIR, filename)); } catch {} }, 3600000);
+    return `${baseUrl}/audio/${filename}`;
+  } catch (err) {
+    console.error('ElevenLabs TTS error:', err.message);
+    return null;
+  }
+}
 
 function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -239,6 +267,12 @@ router.post('/trigger', authMiddleware, async (req, res) => {
     const updateLead = db.prepare("UPDATE leads SET call_status='called', called_at=datetime('now') WHERE id=?");
 
     let calledCount = 0;
+    const elevenLabsConfig = getElevenLabsConfig();
+    const menuAudioUrl = await generateElevenLabsAudio(
+      'Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.',
+      elevenLabsConfig, baseUrl
+    );
+
     const errors = [];
     for (const lead of leads) {
       const personalized = callScript
@@ -261,10 +295,20 @@ router.post('/trigger', authMiddleware, async (req, res) => {
         calledCount++;
       } else {
         try {
+          // Generate per-lead ElevenLabs audio for the personalized script
+          const scriptAudioUrl = await generateElevenLabsAudio(personalized, elevenLabsConfig, baseUrl);
+
+          const scriptPart = scriptAudioUrl
+            ? `<Play>${scriptAudioUrl}</Play>`
+            : say(personalized);
+          const menuPart = menuAudioUrl
+            ? `<Play>${menuAudioUrl}</Play>`
+            : say('Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.');
+
           const ivrTwiml = `<?xml version="1.0" encoding="UTF-8"?><Response>
-  ${say(personalized)}
-  <Gather numDigits="1" action="${baseUrl}/api/calls/ivr-handler" method="POST" timeout="10">
-    ${say('Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.')}
+  ${scriptPart}
+  <Gather numDigits="1" action="${baseUrl}/api/calls/ivr-handler" method="POST" timeout="15">
+    ${menuPart}
   </Gather>
   ${say('We did not receive your input. Goodbye.')}
 </Response>`;
