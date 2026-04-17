@@ -17,17 +17,18 @@ async function generateElevenLabsAudio(text, config, baseUrl) {
     const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config.voiceId}`, {
       method: 'POST',
       headers: { 'xi-api-key': config.apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+      body: JSON.stringify({ text, model_id: 'eleven_turbo_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
     });
     if (!resp.ok) throw new Error(`ElevenLabs ${resp.status}`);
     const buffer = Buffer.from(await resp.arrayBuffer());
     const filename = `call_${uuidv4()}.mp3`;
     fs.writeFileSync(path.join(AUDIO_DIR, filename), buffer);
-    // Clean up after 1 hour
     setTimeout(() => { try { fs.unlinkSync(path.join(AUDIO_DIR, filename)); } catch {} }, 3600000);
-    return `${baseUrl}/audio/${filename}`;
+    const audioUrl = `${baseUrl}/audio/${filename}`;
+    console.log(`[ElevenLabs] Audio ready (${buffer.length} bytes): ${audioUrl}`);
+    return audioUrl;
   } catch (err) {
-    console.error('ElevenLabs TTS error:', err.message);
+    console.error('[ElevenLabs] Error:', err.message);
     return null;
   }
 }
