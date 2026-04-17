@@ -64,7 +64,28 @@ export default function Leads() {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editLead, setEditLead] = useState(null);
   const navigate = useNavigate();
+
+  const LEAD_STATUSES = [
+    { value: 'new', label: 'New', color: 'bg-blue-900/50 text-blue-300' },
+    { value: 'callback', label: 'Call Back', color: 'bg-yellow-900/50 text-yellow-300' },
+    { value: 'scheduled', label: 'Scheduled', color: 'bg-purple-900/50 text-purple-300' },
+    { value: 'not_interested', label: 'Not Interested', color: 'bg-red-900/50 text-red-300' },
+    { value: 'send_quote', label: 'Send Quote', color: 'bg-green-900/50 text-green-300' },
+    { value: 'completed', label: 'Completed', color: 'bg-gray-700 text-gray-300' },
+  ];
+
+  const updateStatus = async (id, status) => {
+    await apiFetch(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    fetchLeads();
+  };
+
+  const deleteLead = async (id) => {
+    if (!window.confirm('Delete this lead?')) return;
+    await apiFetch(`/leads/${id}`, { method: 'DELETE' });
+    fetchLeads();
+  };
 
   useEffect(() => {
     apiFetch('/scrapes').then(data => setScrapes(data)).catch(() => {});
@@ -186,6 +207,9 @@ export default function Leads() {
             onToggleSelect={toggleSelect}
             onToggleAll={toggleAll}
             showSelect={true}
+            onStatusChange={updateStatus}
+            onEdit={setEditLead}
+            onDelete={deleteLead}
           />
         )}
       </div>
@@ -198,6 +222,47 @@ export default function Leads() {
         </div>
       )}
       {showAddModal && <AddLeadModal scrapes={scrapes} onClose={() => setShowAddModal(false)} onSaved={() => { setShowAddModal(false); fetchLeads(); }} />}
+      {editLead && <EditLeadModal lead={editLead} onClose={() => setEditLead(null)} onSaved={() => { setEditLead(null); fetchLeads(); }} />}
+    </div>
+  );
+}
+
+function EditLeadModal({ lead, onClose, onSaved }) {
+  const [form, setForm] = useState({ name: lead.name||'', phone: lead.phone||'', email: lead.email||'', website: lead.website||'', address: lead.address||'', city: lead.city||'', state: lead.state||'', keyword: lead.keyword||'' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const handle = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try { await apiFetch(`/leads/${lead.id}`, { method: 'PATCH', body: JSON.stringify(form) }); onSaved(); }
+    catch (e) { setErr(e.message); setSaving(false); }
+  };
+  const f = (k) => (e) => setForm(p => ({ ...p, [k]: e.target.value }));
+  const inp = 'w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500';
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Edit Lead</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        {err && <p className="text-red-400 text-sm mb-3">{err}</p>}
+        <form onSubmit={handle} className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2"><label className="text-xs text-gray-400">Name</label><input value={form.name} onChange={f('name')} className={inp} /></div>
+            <div><label className="text-xs text-gray-400">Phone</label><input value={form.phone} onChange={f('phone')} className={inp} /></div>
+            <div><label className="text-xs text-gray-400">Email</label><input value={form.email} onChange={f('email')} type="email" className={inp} /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-400">Website</label><input value={form.website} onChange={f('website')} className={inp} /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-400">Address</label><input value={form.address} onChange={f('address')} className={inp} /></div>
+            <div><label className="text-xs text-gray-400">City</label><input value={form.city} onChange={f('city')} className={inp} /></div>
+            <div><label className="text-xs text-gray-400">State</label><input value={form.state} onChange={f('state')} className={inp} /></div>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm">Cancel</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

@@ -1,18 +1,20 @@
-export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggleAll, showSelect = false }) {
+const LEAD_STATUS_COLORS = {
+  new: 'bg-blue-900/50 text-blue-300',
+  callback: 'bg-yellow-900/50 text-yellow-300',
+  scheduled: 'bg-purple-900/50 text-purple-300',
+  not_interested: 'bg-red-900/50 text-red-300',
+  send_quote: 'bg-green-900/50 text-green-300',
+  completed: 'bg-gray-700 text-gray-300',
+};
+const LEAD_STATUSES = ['new','callback','scheduled','not_interested','send_quote','completed'];
+const LEAD_STATUS_LABELS = { new:'New', callback:'Call Back', scheduled:'Scheduled', not_interested:'Not Interested', send_quote:'Send Quote', completed:'Completed' };
+
+export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggleAll, showSelect=false, onStatusChange, onEdit, onDelete }) {
   const allSelected = leads.length > 0 && leads.every(l => selectedIds.has(l.id));
 
-  const statusBadge = (status) => {
-    const colors = {
-      pending: 'bg-gray-700 text-gray-300',
-      sent: 'bg-green-900 text-green-300',
-      called: 'bg-blue-900 text-blue-300',
-      failed: 'bg-red-900 text-red-300',
-    };
-    return (
-      <span className={`px-2 py-0.5 rounded-full text-xs ${colors[status] || colors.pending}`}>
-        {status}
-      </span>
-    );
+  const channelBadge = (status) => {
+    const colors = { pending:'bg-gray-700 text-gray-400', sent:'bg-green-900 text-green-300', called:'bg-blue-900 text-blue-300', failed:'bg-red-900 text-red-300' };
+    return <span className={`px-1.5 py-0.5 rounded text-xs ${colors[status]||colors.pending}`}>{status}</span>;
   };
 
   return (
@@ -20,51 +22,61 @@ export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggl
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-800 text-left text-gray-400">
-            {showSelect && (
-              <th className="p-3">
-                <input type="checkbox" checked={allSelected} onChange={onToggleAll} className="rounded bg-gray-800 border-gray-600" />
-              </th>
-            )}
+            {showSelect && <th className="p-3"><input type="checkbox" checked={allSelected} onChange={onToggleAll} className="rounded bg-gray-800 border-gray-600" /></th>}
             <th className="p-3">Name</th>
             <th className="p-3">Phone</th>
             <th className="p-3">Email</th>
             <th className="p-3">Website</th>
-            <th className="p-3">Email</th>
-            <th className="p-3">Call</th>
-            <th className="p-3">SMS</th>
+            <th className="p-3">Status</th>
+            <th className="p-3">Opens</th>
+            <th className="p-3">Channels</th>
+            {(onEdit || onDelete) && <th className="p-3"></th>}
           </tr>
         </thead>
         <tbody>
-          {leads.map((lead) => (
+          {leads.map(lead => (
             <tr key={lead.id} className="border-b border-gray-800/50 hover:bg-gray-900/50">
-              {showSelect && (
+              {showSelect && <td className="p-3"><input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => onToggleSelect(lead.id)} className="rounded bg-gray-800 border-gray-600" /></td>}
+              <td className="p-3 font-medium text-white">
+                {lead.name}
+                {lead.source === 'manual' && <span className="ml-1 text-xs text-purple-400">manual</span>}
+              </td>
+              <td className="p-3 text-gray-300">{lead.phone || '—'}</td>
+              <td className="p-3 text-gray-300">
+                {lead.email ? <span>{lead.email}{lead.email_opens > 0 && <span className="ml-1 text-xs text-green-400">👁 {lead.email_opens}</span>}</span> : '—'}
+              </td>
+              <td className="p-3">
+                {lead.website ? <a href={lead.website} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline truncate block max-w-[160px]">{lead.website.replace(/^https?:\/\/(www\.)?/, '')}</a> : '—'}
+              </td>
+              <td className="p-3">
+                {onStatusChange ? (
+                  <select value={lead.status || 'new'} onChange={e => onStatusChange(lead.id, e.target.value)}
+                    className={`px-2 py-1 rounded text-xs border-0 focus:outline-none cursor-pointer ${LEAD_STATUS_COLORS[lead.status||'new'] || 'bg-gray-700 text-gray-300'}`}>
+                    {LEAD_STATUSES.map(s => <option key={s} value={s}>{LEAD_STATUS_LABELS[s]}</option>)}
+                  </select>
+                ) : (
+                  <span className={`px-2 py-0.5 rounded text-xs ${LEAD_STATUS_COLORS[lead.status||'new'] || 'bg-gray-700 text-gray-300'}`}>{LEAD_STATUS_LABELS[lead.status||'new'] || lead.status}</span>
+                )}
+              </td>
+              <td className="p-3 text-gray-400 text-xs">{lead.email_opens > 0 ? <span className="text-green-400">{lead.email_opens} opens</span> : '—'}</td>
+              <td className="p-3">
+                <div className="flex gap-1 flex-wrap">
+                  {channelBadge(lead.email_status)}
+                  {channelBadge(lead.call_status)}
+                  {channelBadge(lead.sms_status)}
+                </div>
+              </td>
+              {(onEdit || onDelete) && (
                 <td className="p-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.has(lead.id)}
-                    onChange={() => onToggleSelect(lead.id)}
-                    className="rounded bg-gray-800 border-gray-600"
-                  />
+                  <div className="flex gap-2">
+                    {onEdit && <button onClick={() => onEdit(lead)} className="text-xs text-blue-400 hover:text-blue-300">Edit</button>}
+                    {onDelete && <button onClick={() => onDelete(lead.id)} className="text-xs text-red-400 hover:text-red-300">Del</button>}
+                  </div>
                 </td>
               )}
-              <td className="p-3 font-medium text-white">{lead.name}</td>
-              <td className="p-3 text-gray-300">{lead.phone}</td>
-              <td className="p-3 text-gray-300">{lead.email || '—'}</td>
-              <td className="p-3">
-                {lead.website ? (
-                  <a href={lead.website} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline truncate block max-w-[200px]">
-                    {lead.website.replace(/^https?:\/\//, '')}
-                  </a>
-                ) : '—'}
-              </td>
-              <td className="p-3">{statusBadge(lead.email_status)}</td>
-              <td className="p-3">{statusBadge(lead.call_status)}</td>
-              <td className="p-3">{statusBadge(lead.sms_status)}</td>
             </tr>
           ))}
-          {leads.length === 0 && (
-            <tr><td colSpan={showSelect ? 8 : 7} className="p-8 text-center text-gray-500">No leads found</td></tr>
-          )}
+          {leads.length === 0 && <tr><td colSpan={10} className="p-8 text-center text-gray-500">No leads found</td></tr>}
         </tbody>
       </table>
     </div>

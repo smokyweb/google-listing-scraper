@@ -302,12 +302,14 @@ router.post('/trigger', authMiddleware, async (req, res) => {
           // Menu always uses SignalWire Say to save ElevenLabs credits
           const menuPart = say('Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.');
 
+          // Voicemail fallback: if no answer, leave a message after the beep
+          const voicemailScript = personalized + ' Please leave a message after the beep and we will get back to you.';
           const ivrTwiml = `<?xml version="1.0" encoding="UTF-8"?><Response>
   ${scriptPart}
   <Gather numDigits="1" action="${baseUrl}/api/calls/ivr-handler" method="POST" timeout="15">
     ${menuPart}
   </Gather>
-  ${say('We did not receive your input. Goodbye.')}
+  ${say('We did not receive your input.')} ${say('Please leave a message after the beep.')} <Record maxLength="30" action="${baseUrl}/api/calls/recording-done" />
 </Response>`;
           const authHeader = Buffer.from(`${swConfig.projectId}:${swConfig.token}`).toString('base64');
           const callResp = await fetch(`https://${swConfig.spaceUrl}/api/laml/2010-04-01/Accounts/${swConfig.projectId}/Calls.json`, {
@@ -519,6 +521,11 @@ async function finishCalendarBooking(res, session, lead, email) {
     return res.type('text/xml').send(twiml(`${say(`Your meeting has been reserved for ${formatSlotLabel(selectedSlot)}. We will follow up with a calendar invite. Goodbye.`)} <Hangup/>`));
   }
 }
+
+// ─── RECORDING DONE (voicemail) ──────────────────────────────────────────────
+router.post('/recording-done', (req, res) => {
+  res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Thank you for your message. We will call you back shortly. Goodbye.</Say><Hangup/></Response>');
+});
 
 // ─── EMAIL SCRAPER REFRESH ─────────────────────────────────────────────────────
 router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {

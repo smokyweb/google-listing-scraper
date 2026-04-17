@@ -29,6 +29,10 @@ app.use('/api/phone-numbers', require('./routes/phone-numbers'));
 app.use('/api/scrapes', require('./routes/scrapes'));
 app.use('/api/voice-scripts', require('./routes/voice-scripts'));
 app.use('/api/callbacks', require('./routes/callbacks'));
+app.use('/api/email-templates', require('./routes/email-templates'));
+app.use('/api/sms-templates', require('./routes/sms-templates'));
+app.use('/api/sales-users', require('./routes/sales-users'));
+app.use('/api/locations', require('./routes/locations'));
 // SignalWire webhooks (no auth) — must be before authMiddleware
 app.post('/api/calls/ivr-handler', require('./routes/calls').ivr || ((req, res, next) => next()));
 app.post('/api/calls/ivr-callback', require('./routes/calls').ivrCallback || ((req, res, next) => next()));

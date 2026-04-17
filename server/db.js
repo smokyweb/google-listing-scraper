@@ -110,6 +110,49 @@ db.exec(`
     is_active INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS email_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sms_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sales_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    states TEXT DEFAULT '[]',
+    cities TEXT DEFAULT '[]',
+    phone_number_id INTEGER REFERENCES phone_numbers(id),
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS email_opens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    campaign_id INTEGER,
+    opened_at TEXT DEFAULT (datetime('now')),
+    ip TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS sms_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    message_sid TEXT,
+    status TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 // Migrations — add columns to existing tables if they don't exist
@@ -117,6 +160,10 @@ try { db.exec('ALTER TABLE leads ADD COLUMN scrape_id INTEGER REFERENCES scrapes
 try { db.exec('ALTER TABLE leads ADD COLUMN email_scraped INTEGER DEFAULT 0'); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN unsubscribed INTEGER DEFAULT 0"); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'scraped'"); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN status TEXT DEFAULT 'new'"); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN assigned_user_id INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN email_opens INTEGER DEFAULT 0"); } catch(e) {}
+try { db.exec("ALTER TABLE campaigns ADD COLUMN tracking_id TEXT"); } catch(e) {}
 
 // Seed default phone number from env if none exist
 const existingNumbers = db.prepare('SELECT COUNT(*) as count FROM phone_numbers').get();

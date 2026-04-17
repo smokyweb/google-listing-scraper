@@ -12,6 +12,7 @@ const nav = [
   { to: '/callbacks', label: 'Call Backs', icon: '🔔' },
   { to: '/sms', label: 'SMS', icon: '💬' },
   { to: '/sms-inbox', label: 'SMS Inbox', icon: '📨' },
+  { to: '/sales-users', label: 'Sales Users', icon: '👥' },
   { to: '/phone-numbers', label: 'Phone Numbers', icon: '📱' },
   { to: '/calendar', label: 'Calendar', icon: '📅' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },

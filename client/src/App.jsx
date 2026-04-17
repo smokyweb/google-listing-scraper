@@ -17,6 +17,7 @@ import ScrapeDetail from './pages/ScrapeDetail';
 import VoiceMessage from './pages/VoiceMessage';
 import Callbacks from './pages/Callbacks';
 import SMSInbox from './pages/SMSInbox';
+import SalesUsers from './pages/SalesUsers';
 
 function Layout({ children }) {
   return (
@@ -61,6 +62,7 @@ export default function App() {
       <Route path="/voice" element={<Layout><VoiceMessage /></Layout>} />
       <Route path="/callbacks" element={<Layout><Callbacks /></Layout>} />
       <Route path="/sms-inbox" element={<Layout><SMSInbox /></Layout>} />
+      <Route path="/sales-users" element={<Layout><SalesUsers /></Layout>} />
       <Route path="/phone-numbers" element={<Layout><PhoneNumbers /></Layout>} />
       <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
       <Route path="/settings" element={<Layout><Settings /></Layout>} />
