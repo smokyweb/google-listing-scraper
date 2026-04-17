@@ -233,7 +233,7 @@ router.post('/tts-preview', authMiddleware, async (req, res) => {
     const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config.voiceId}`, {
       method: 'POST',
       headers: { 'xi-api-key': config.apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.5 } }),
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
     });
     if (!resp.ok) throw new Error(`ElevenLabs error: ${resp.status}`);
     res.setHeader('Content-Type', 'audio/mpeg');
