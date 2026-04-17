@@ -9,6 +9,7 @@ const nav = [
   { to: '/import', label: 'Import Leads', icon: '📂' },
   { to: '/email', label: 'Email Campaign', icon: '✉️' },
   { to: '/email-senders', label: 'Email Senders', icon: '📧' },
+  { to: '/quick-email', label: 'Quick Email', icon: '✏️' },
   { to: '/calls', label: 'Phone Calls', icon: '📞' },
   { to: '/dialer', label: 'Dialer', icon: '☎️' },
   { to: '/voice', label: 'Voice Message', icon: '🎙️' },

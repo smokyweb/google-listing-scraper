@@ -67,6 +67,7 @@ export default function Leads() {
   const [editLead, setEditLead] = useState(null);
   const [callLead, setCallLead] = useState(null);
   const [smsLead, setSmsLead] = useState(null);
+  const [emailLead, setEmailLead] = useState(null);
   const navigate = useNavigate();
 
   const LEAD_STATUSES = [
@@ -227,6 +228,7 @@ export default function Leads() {
             onDelete={deleteLead}
             onCall={setCallLead}
             onSMS={setSmsLead}
+            onEmail={setEmailLead}
           />
         )}
       </div>
@@ -242,6 +244,45 @@ export default function Leads() {
       {editLead && <EditLeadModal lead={editLead} onClose={() => setEditLead(null)} onSaved={() => { setEditLead(null); fetchLeads(); }} />}
       {callLead && <QuickCallModal lead={callLead} onClose={() => setCallLead(null)} />}
       {smsLead && <QuickSMSModal lead={smsLead} onClose={() => setSmsLead(null)} onSent={fetchLeads} />}
+      {emailLead && <QuickEmailModal lead={emailLead} onClose={() => setEmailLead(null)} onSent={fetchLeads} />}
+    </div>
+  );
+}
+
+function QuickEmailModal({ lead, onClose, onSent }) {
+  const [subject, setSubject] = useState(`Following up on your business in ${lead.city||'your area'}`);
+  const [body, setBody] = useState(`<p>Hi ${lead.name||'there'},</p><p>I wanted to reach out regarding your business. I believe we can help you grow.</p><p>Please reply to this email or call us at your convenience.</p><p>Best regards</p>`);
+  const [senderId, setSenderId] = useState('');
+  const [senders, setSenders] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+  useEffect(() => { apiFetch('/email-senders').then(d => { setSenders(d); const def=d.find(s=>s.is_default); if(def) setSenderId(String(def.id)); }).catch(()=>{}); }, []);
+  const handleSend = async () => {
+    setSending(true);
+    try {
+      const data = await apiFetch('/dialer/email', { method:'POST', body: JSON.stringify({ toEmail: lead.email, subject, body, senderId: senderId||undefined, leadId: lead.id }) });
+      setResult({ ok: true, msg: data.mock ? 'Mock email sent' : `✅ Email sent to ${lead.name}` });
+      if (onSent) onSent();
+    } catch(err) { setResult({ ok: false, msg: err.message }); }
+    finally { setSending(false); }
+  };
+  const inp = 'w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500';
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">✉ Email to {lead.name}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <p className="text-sm text-gray-400 mb-4">To: <span className="text-white font-mono">{lead.email}</span></p>
+        <div className="space-y-3">
+          {senders.length > 0 && <div><label className="text-xs text-gray-400">From</label><select value={senderId} onChange={e=>setSenderId(e.target.value)} className={inp}><option value="">Default</option>{senders.map(s=><option key={s.id} value={String(s.id)}>{s.label} — {s.email}</option>)}</select></div>}
+          <div><label className="text-xs text-gray-400">Subject</label><input value={subject} onChange={e=>setSubject(e.target.value)} className={inp} /></div>
+          <div><label className="text-xs text-gray-400">Body (HTML)</label><textarea value={body} onChange={e=>setBody(e.target.value)} rows={6} className={`${inp} resize-none font-mono text-xs`} /></div>
+          {result && <div className={`p-3 rounded text-sm ${result.ok ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>{result.msg}</div>}
+          <button onClick={handleSend} disabled={sending||!subject||!body} className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50">{sending ? 'Sending...' : '✉ Send Email'}</button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -143,4 +143,41 @@ router.post('/sms', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/dialer/email
+// Send a manual email to any address
+router.post('/email', authMiddleware, async (req, res) => {
+  try {
+    const { toEmail, subject, body, senderId, leadId } = req.body;
+    if (!toEmail || !subject || !body) return res.status(400).json({ error: 'toEmail, subject, and body are required' });
+
+    const smtpHost = process.env.SMTP_HOST || getSetting('smtp_host');
+    const smtpUser = process.env.SMTP_USER || getSetting('smtp_user');
+    const smtpPass = process.env.SMTP_PASS || getSetting('smtp_pass');
+    const smtpPort = Number(process.env.SMTP_PORT || getSetting('smtp_port') || 587);
+    const isMock = !smtpHost;
+
+    // Resolve from address
+    let fromAddr = process.env.SMTP_FROM || getSetting('smtp_from') || 'noreply@example.com';
+    if (senderId) {
+      const sender = db.prepare('SELECT * FROM email_senders WHERE id=?').get(senderId);
+      if (sender) fromAddr = sender.name ? `${sender.name} <${sender.email}>` : sender.email;
+    } else {
+      const def = db.prepare('SELECT * FROM email_senders WHERE is_default=1 LIMIT 1').get();
+      if (def) fromAddr = def.name ? `${def.name} <${def.email}>` : def.email;
+    }
+
+    if (isMock) return res.json({ success: true, mock: true, message: `[Mock] Email would be sent to ${toEmail} from ${fromAddr}` });
+
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({ host: smtpHost, port: smtpPort, auth: { user: smtpUser, pass: smtpPass } });
+    await transporter.sendMail({ from: fromAddr, to: toEmail, subject, html: body });
+
+    if (leadId) db.prepare("UPDATE leads SET email_status='sent', email_sent_at=datetime('now') WHERE id=?").run(leadId);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('Dialer email error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

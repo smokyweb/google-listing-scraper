@@ -9,7 +9,7 @@ const LEAD_STATUS_COLORS = {
 const LEAD_STATUSES = ['new','callback','scheduled','not_interested','send_quote','completed'];
 const LEAD_STATUS_LABELS = { new:'New', callback:'Call Back', scheduled:'Scheduled', not_interested:'Not Interested', send_quote:'Send Quote', completed:'Completed' };
 
-export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggleAll, showSelect=false, onStatusChange, onEdit, onDelete, onCall, onSMS }) {
+export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggleAll, showSelect=false, onStatusChange, onEdit, onDelete, onCall, onSMS, onEmail }) {
   const allSelected = leads.length > 0 && leads.every(l => selectedIds.has(l.id));
 
   const channelBadge = (status) => {
@@ -66,11 +66,12 @@ export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggl
                   {channelBadge(lead.sms_status)}
                 </div>
               </td>
-              {(onEdit || onDelete || onCall || onSMS) && (
+              {(onEdit || onDelete || onCall || onSMS || onEmail) && (
                 <td className="p-3">
                   <div className="flex gap-1.5 flex-wrap">
                     {onCall && lead.phone && <button onClick={() => onCall(lead)} title="Call lead" className="px-2 py-1 bg-green-800 hover:bg-green-700 text-green-200 rounded text-xs transition-colors">📞</button>}
                     {onSMS && lead.phone && <button onClick={() => onSMS(lead)} title="Send SMS" className="px-2 py-1 bg-blue-800 hover:bg-blue-700 text-blue-200 rounded text-xs transition-colors">💬</button>}
+                    {onEmail && lead.email && <button onClick={() => onEmail(lead)} title="Send Email" className="px-2 py-1 bg-purple-800 hover:bg-purple-700 text-purple-200 rounded text-xs transition-colors">✉</button>}
                     {onEdit && <button onClick={() => onEdit(lead)} className="text-xs text-gray-400 hover:text-white px-1.5 py-1 rounded hover:bg-gray-700 transition-colors">✏</button>}
                     {onDelete && <button onClick={() => onDelete(lead.id)} className="text-xs text-red-400 hover:text-red-300 px-1.5 py-1 rounded hover:bg-gray-700 transition-colors">🗑</button>}
                   </div>
