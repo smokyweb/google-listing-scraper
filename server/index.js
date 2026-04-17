@@ -34,6 +34,7 @@ app.use('/api/sms-templates', require('./routes/sms-templates'));
 app.use('/api/sales-users', require('./routes/sales-users'));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/ai', require('./routes/ai'));
+app.use('/api/dialer', require('./routes/dialer'));
 // SignalWire webhooks (no auth) — must be before authMiddleware
 app.post('/api/calls/ivr-handler', require('./routes/calls').ivr || ((req, res, next) => next()));
 app.post('/api/calls/ivr-callback', require('./routes/calls').ivrCallback || ((req, res, next) => next()));

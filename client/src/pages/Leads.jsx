@@ -65,6 +65,8 @@ export default function Leads() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [editLead, setEditLead] = useState(null);
+  const [callLead, setCallLead] = useState(null);
+  const [smsLead, setSmsLead] = useState(null);
   const navigate = useNavigate();
 
   const LEAD_STATUSES = [
@@ -223,6 +225,8 @@ export default function Leads() {
             onStatusChange={updateStatus}
             onEdit={setEditLead}
             onDelete={deleteLead}
+            onCall={setCallLead}
+            onSMS={setSmsLead}
           />
         )}
       </div>
@@ -236,6 +240,79 @@ export default function Leads() {
       )}
       {showAddModal && <AddLeadModal scrapes={scrapes} onClose={() => setShowAddModal(false)} onSaved={() => { setShowAddModal(false); fetchLeads(); }} />}
       {editLead && <EditLeadModal lead={editLead} onClose={() => setEditLead(null)} onSaved={() => { setEditLead(null); fetchLeads(); }} />}
+      {callLead && <QuickCallModal lead={callLead} onClose={() => setCallLead(null)} />}
+      {smsLead && <QuickSMSModal lead={smsLead} onClose={() => setSmsLead(null)} onSent={fetchLeads} />}
+    </div>
+  );
+}
+
+function QuickCallModal({ lead, onClose }) {
+  const [agentNumber, setAgentNumber] = useState('');
+  const [fromNumberId, setFromNumberId] = useState('');
+  const [phoneNumbers, setPhoneNumbers] = useState([]);
+  const [calling, setCalling] = useState(false);
+  const [result, setResult] = useState(null);
+  useEffect(() => { apiFetch('/phone-numbers').then(d => { setPhoneNumbers(d); const def=d.find(n=>n.is_default); if(def) setFromNumberId(String(def.id)); }).catch(()=>{}); }, []);
+  const handleCall = async () => {
+    setCalling(true);
+    try {
+      const data = await apiFetch('/dialer/call', { method:'POST', body: JSON.stringify({ toNumber: lead.phone, fromNumberId: fromNumberId||undefined, agentNumber: agentNumber||undefined, leadId: lead.id }) });
+      setResult({ ok: true, msg: data.mock ? 'Mock call queued' : data.mode==='agent-first' ? `✅ Your phone will ring — answer to connect to ${lead.name}` : `✅ Calling ${lead.phone}...` });
+    } catch(err) { setResult({ ok: false, msg: err.message }); }
+    finally { setCalling(false); }
+  };
+  const inp = 'w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500';
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-md">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">📞 Call {lead.name}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <p className="text-sm text-gray-400 mb-4">Calling: <span className="text-white font-mono">{lead.phone}</span></p>
+        <div className="space-y-3">
+          {phoneNumbers.length > 0 && <div><label className="text-xs text-gray-400">Caller ID</label><select value={fromNumberId} onChange={e=>setFromNumberId(e.target.value)} className={inp}><option value="">Default</option>{phoneNumbers.map(n=><option key={n.id} value={String(n.id)}>{n.label} — {n.number}</option>)}</select></div>}
+          <div><label className="text-xs text-gray-400">Your Phone (optional — rings your phone first)</label><input value={agentNumber} onChange={e=>setAgentNumber(e.target.value)} placeholder="Your mobile number" className={inp} /></div>
+          {result && <div className={`p-3 rounded text-sm ${result.ok ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>{result.msg}</div>}
+          <button onClick={handleCall} disabled={calling} className="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50">{calling ? 'Calling...' : '📞 Call Now'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickSMSModal({ lead, onClose, onSent }) {
+  const [message, setMessage] = useState('');
+  const [fromNumberId, setFromNumberId] = useState('');
+  const [phoneNumbers, setPhoneNumbers] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+  useEffect(() => { apiFetch('/phone-numbers').then(d => { setPhoneNumbers(d); const def=d.find(n=>n.is_default); if(def) setFromNumberId(String(def.id)); }).catch(()=>{}); }, []);
+  const handleSend = async () => {
+    setSending(true);
+    try {
+      const data = await apiFetch('/dialer/sms', { method:'POST', body: JSON.stringify({ toNumber: lead.phone, message, fromNumberId: fromNumberId||undefined, leadId: lead.id }) });
+      setResult({ ok: true, msg: data.mock ? 'Mock SMS sent' : `✅ SMS sent to ${lead.name}` });
+      if (onSent) onSent();
+    } catch(err) { setResult({ ok: false, msg: err.message }); }
+    finally { setSending(false); }
+  };
+  const inp = 'w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500';
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-md">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">💬 SMS to {lead.name}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
+        </div>
+        <p className="text-sm text-gray-400 mb-4">To: <span className="text-white font-mono">{lead.phone}</span></p>
+        <div className="space-y-3">
+          {phoneNumbers.length > 0 && <div><label className="text-xs text-gray-400">From</label><select value={fromNumberId} onChange={e=>setFromNumberId(e.target.value)} className={inp}><option value="">Default</option>{phoneNumbers.map(n=><option key={n.id} value={String(n.id)}>{n.label} — {n.number}</option>)}</select></div>}
+          <div><label className="text-xs text-gray-400">Message</label><textarea value={message} onChange={e=>setMessage(e.target.value)} rows={4} placeholder="Type your message..." className={`${inp} resize-none`} /></div>
+          {result && <div className={`p-3 rounded text-sm ${result.ok ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>{result.msg}</div>}
+          <button onClick={handleSend} disabled={sending||!message} className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50">{sending ? 'Sending...' : '💬 Send SMS'}</button>
+        </div>
+      </div>
     </div>
   );
 }
