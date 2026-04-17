@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
 
 export default function PhoneCalls() {
-  const [script, setScript] = useState(
-    'Hello {business_name}, this is a courtesy call regarding your business listing in {city}, {state}. We have some exciting opportunities to help grow your online presence.'
-  );
+  const [voiceScripts, setVoiceScripts] = useState([]);
+  const [selectedScriptId, setSelectedScriptId] = useState('');
+  const [script, setScript] = useState('Hello {business_name}, this is a courtesy call regarding your business listing in {city}, {state}. We have some exciting opportunities to help grow your online presence.');
   const [leads, setLeads] = useState([]);
   const [phoneNumbers, setPhoneNumbers] = useState([]);
   const [selectedPhoneId, setSelectedPhoneId] = useState('');
@@ -12,7 +12,8 @@ export default function PhoneCalls() {
   const [calling, setCalling] = useState(false);
   const [result, setResult] = useState(null);
   const [ttsLoading, setTtsLoading] = useState(false);
-  const [ttsResult, setTtsResult] = useState(null);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const selectAllRef = useRef(null);
 
   useEffect(() => {
     apiFetch('/leads?limit=500')
@@ -25,32 +26,48 @@ export default function PhoneCalls() {
         if (def) setSelectedPhoneId(String(def.id));
       })
       .catch(console.error);
+    apiFetch('/voice-scripts')
+      .then(data => {
+        setVoiceScripts(data);
+        const active = data.find(s => s.is_active);
+        if (active) { setSelectedScriptId(String(active.id)); setScript(active.script); }
+      })
+      .catch(console.error);
   }, []);
+
+  const handleScriptChange = (id) => {
+    setSelectedScriptId(id);
+    if (!id) return;
+    const found = voiceScripts.find(s => String(s.id) === id);
+    if (found) setScript(found.script);
+  };
 
   const handleTTSPreview = async () => {
     setTtsLoading(true);
-    setTtsResult(null);
+    setAudioUrl(null);
     try {
       const previewText = script
-        .replace(/{business_name}/g, 'Acme Plumbing')
-        .replace(/{city}/g, 'Austin')
-        .replace(/{state}/g, 'TX');
-
-      const data = await apiFetch('/calls/tts-preview', {
+        .replace(/{business_name}/g, 'Acme Plumbing').replace(/{company_name}/g, 'Acme Plumbing')
+        .replace(/{city}/g, 'Austin').replace(/{state}/g, 'TX')
+        .replace(/{keyword}/g, 'plumber').replace(/{phone}/g, '555-1234').replace(/{email}/g, 'info@acme.com');
+      const token = localStorage.getItem('token');
+      const resp = await fetch('/api/calls/tts-preview', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ text: previewText }),
       });
-      setTtsResult(data);
+      if (!resp.ok) { const j = await resp.json().catch(() => ({})); throw new Error(j.error || `Error ${resp.status}`); }
+      const blob = await resp.blob();
+      setAudioUrl(URL.createObjectURL(blob));
     } catch (err) {
-      setTtsResult({ error: err.message });
-    } finally {
-      setTtsLoading(false);
-    }
+      setResult({ error: `TTS error: ${err.message}` });
+    } finally { setTtsLoading(false); }
   };
 
   const handleTrigger = async () => {
     setCalling(true);
     setResult(null);
+    setAudioUrl(null);
     try {
       const data = await apiFetch('/calls/trigger', {
         method: 'POST',
@@ -63,109 +80,132 @@ export default function PhoneCalls() {
       setResult(data);
     } catch (err) {
       setResult({ error: err.message });
-    } finally {
-      setCalling(false);
-    }
+    } finally { setCalling(false); }
   };
 
   const toggleSelect = (id) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+    setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.size === leads.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(leads.map(l => l.id)));
   };
 
   return (
     <div>
       <h2 className="text-2xl font-bold text-white mb-6">Phone Calls</h2>
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Call Script Template</h3>
-          <p className="text-xs text-gray-500 mb-4">Placeholders: {'{business_name}'} {'{city}'} {'{state}'}</p>
 
+        {/* Left — Script + Controls */}
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
+          <h3 className="text-lg font-semibold text-white">Call Script</h3>
+
+          {/* Script selector */}
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Select Saved Script</label>
+            <select value={selectedScriptId} onChange={e => handleScriptChange(e.target.value)}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value="">— Custom script —</option>
+              {voiceScripts.map(s => (
+                <option key={s.id} value={String(s.id)}>
+                  {s.name}{s.is_active ? ' ✓ (active)' : ''}
+                </option>
+              ))}
+            </select>
+            {voiceScripts.length === 0 && (
+              <p className="text-xs text-gray-500 mt-1">No scripts saved yet — create them in Voice Message page.</p>
+            )}
+          </div>
+
+          {/* Phone number */}
           {phoneNumbers.length > 0 && (
-            <div className="mb-4">
+            <div>
               <label className="block text-xs text-gray-400 mb-1">Calling From</label>
-              <select
-                value={selectedPhoneId}
-                onChange={e => setSelectedPhoneId(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
-              >
+              <select value={selectedPhoneId} onChange={e => setSelectedPhoneId(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
                 <option value="">Use default number</option>
                 {phoneNumbers.map(n => (
-                  <option key={n.id} value={String(n.id)}>
-                    {n.label} — {n.number}{n.is_default ? ' (default)' : ''}
-                  </option>
+                  <option key={n.id} value={String(n.id)}>{n.label} — {n.number}{n.is_default ? ' (default)' : ''}</option>
                 ))}
               </select>
             </div>
           )}
 
-          <textarea
-            value={script}
-            onChange={(e) => setScript(e.target.value)}
-            rows={6}
-            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 mb-4"
-          />
-
-          <div className="bg-gray-800 rounded-lg p-4 mb-4">
-            <p className="text-xs text-gray-500 mb-2">IVR Flow:</p>
-            <ul className="text-sm text-gray-300 space-y-1">
-              <li>Press 1 → Transfer to your phone number</li>
-              <li>Press 2 → Send SMS with scheduling link</li>
-            </ul>
+          {/* Script editor */}
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">Script Text <span className="text-gray-600">(edit or write custom)</span></label>
+            <p className="text-xs text-gray-600 mb-1">Fields: {'{business_name}'} {'{city}'} {'{state}'} {'{keyword}'} {'{phone}'} {'{email}'}</p>
+            <textarea value={script} onChange={e => { setScript(e.target.value); setSelectedScriptId(''); }} rows={6}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
           </div>
 
-          <div className="flex gap-3">
-            <button
-              onClick={handleTTSPreview}
-              disabled={ttsLoading}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
-            >
-              {ttsLoading ? 'Generating...' : 'TTS Preview'}
+          {/* IVR info */}
+          <div className="bg-gray-800 rounded-lg p-3 text-xs text-gray-400 space-y-1">
+            <p className="font-medium text-gray-300">After script plays, caller hears:</p>
+            <p>Press 1 → Transfer to staff</p>
+            <p>Press 2 → Request callback (logged in Call Backs)</p>
+            <p>Press 3 → Schedule Google Meet</p>
+            <p>Press 4 → Unsubscribe</p>
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-wrap gap-2">
+            <button onClick={handleTTSPreview} disabled={ttsLoading || !script}
+              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
+              {ttsLoading ? 'Generating...' : '🔊 TTS Preview'}
             </button>
-            <button
-              onClick={handleTrigger}
-              disabled={calling || !script}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
-            >
-              {calling ? 'Calling...' : selectedIds.size > 0 ? `Call ${selectedIds.size} Selected` : `Call All (${leads.length})`}
+            <button onClick={handleTrigger} disabled={calling || !script}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+              {calling ? 'Calling...' : selectedIds.size > 0 ? `📞 Call ${selectedIds.size} Selected` : `📞 Call All (${leads.length})`}
             </button>
           </div>
 
-          {ttsResult && (
-            <div className={`mt-4 p-4 rounded-lg ${ttsResult.error ? 'bg-red-900/50 text-red-300' : 'bg-purple-900/50 text-purple-300'}`}>
-              {ttsResult.error || (ttsResult.mock ? 'ElevenLabs not configured — TTS preview is mocked' : 'TTS audio generated successfully')}
+          {audioUrl && (
+            <div className="bg-gray-800 rounded-lg p-3">
+              <p className="text-xs text-gray-400 mb-2">TTS Preview (sample data):</p>
+              <audio controls src={audioUrl} className="w-full" />
             </div>
           )}
 
           {result && (
-            <div className={`mt-4 p-4 rounded-lg ${result.error ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>
-              {result.error || `Called ${result.called} leads${result.mock ? ' (mock mode)' : ''}`}
+            <div className={`p-4 rounded-lg text-sm ${result.error ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>
+              {result.error
+                ? result.error
+                : `✅ Called ${result.called} of ${result.total} lead(s)${result.mock ? ' (mock mode — SignalWire not configured)' : ''}`}
+              {result.errors && result.errors.length > 0 && (
+                <div className="mt-2 text-xs text-red-300 space-y-1">
+                  <p className="font-medium">Errors:</p>
+                  {result.errors.map((e, i) => <p key={i}>• {e}</p>)}
+                </div>
+              )}
             </div>
           )}
         </div>
 
+        {/* Right — Lead selection */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <h3 className="text-lg font-semibold text-white mb-4">Recipients ({leads.length} with phone)</h3>
-          <div className="max-h-96 overflow-y-auto space-y-1">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-white">Recipients ({leads.length} with phone)</h3>
+            {leads.length > 0 && (
+              <button onClick={toggleAll} className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                {selectedIds.size === leads.length ? 'Deselect all' : 'Select all'}
+              </button>
+            )}
+          </div>
+          <div className="max-h-[500px] overflow-y-auto space-y-1">
             {leads.map(lead => (
               <label key={lead.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-800 rounded-lg cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedIds.has(lead.id)}
-                  onChange={() => toggleSelect(lead.id)}
-                  className="rounded bg-gray-800 border-gray-600"
-                />
-                <div>
-                  <p className="text-sm text-white">{lead.name}</p>
+                <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)}
+                  className="rounded bg-gray-800 border-gray-600" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white truncate">{lead.name}</p>
                   <p className="text-xs text-gray-500">{lead.phone}</p>
                 </div>
+                {lead.source === 'manual' && <span className="text-xs text-purple-400 shrink-0">manual</span>}
               </label>
             ))}
-            {leads.length === 0 && <p className="text-gray-500 text-sm p-4">No leads with phone numbers. Scrape some leads first.</p>}
+            {leads.length === 0 && <p className="text-gray-500 text-sm p-4 text-center">No leads with phone numbers yet.</p>}
           </div>
         </div>
       </div>

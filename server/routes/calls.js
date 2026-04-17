@@ -239,6 +239,7 @@ router.post('/trigger', authMiddleware, async (req, res) => {
     const updateLead = db.prepare("UPDATE leads SET call_status='called', called_at=datetime('now') WHERE id=?");
 
     let calledCount = 0;
+    const errors = [];
     for (const lead of leads) {
       const personalized = callScript
         .replace(/{company_name}/g, lead.name || '')
@@ -249,8 +250,13 @@ router.post('/trigger', authMiddleware, async (req, res) => {
         .replace(/{phone}/g, lead.phone || '')
         .replace(/{email}/g, lead.email || '');
 
+      // Normalize phone to E.164
+      let toPhone = (lead.phone || '').replace(/\D/g, '');
+      if (toPhone.length === 10) toPhone = '1' + toPhone;
+      if (!toPhone.startsWith('+')) toPhone = '+' + toPhone;
+
       if (isMock) {
-        console.log(`[MOCK CALL] To: ${lead.phone}, Script: ${personalized.substring(0, 80)}`);
+        console.log(`[MOCK CALL] To: ${toPhone}, Script: ${personalized.substring(0, 80)}`);
         updateLead.run(lead.id);
         calledCount++;
       } else {
@@ -266,13 +272,24 @@ router.post('/trigger', authMiddleware, async (req, res) => {
           const callResp = await fetch(`https://${swConfig.spaceUrl}/api/laml/2010-04-01/Accounts/${swConfig.projectId}/Calls.json`, {
             method: 'POST',
             headers: { 'Authorization': `Basic ${authHeader}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ From: fromNumber, To: lead.phone, Twiml: ivrTwiml }),
+            body: new URLSearchParams({ From: fromNumber, To: toPhone, Twiml: ivrTwiml }),
           });
-          if (callResp.ok) { updateLead.run(lead.id); calledCount++; }
-        } catch (err) { console.error(`Call error for ${lead.phone}:`, err.message); }
+          if (callResp.ok) {
+            updateLead.run(lead.id);
+            calledCount++;
+          } else {
+            const errBody = await callResp.text();
+            const errMsg = `${lead.name} (${toPhone}): HTTP ${callResp.status} — ${errBody.substring(0, 200)}`;
+            errors.push(errMsg);
+            console.error('[CALL FAILED]', errMsg);
+          }
+        } catch (err) {
+          errors.push(`${lead.name}: ${err.message}`);
+          console.error(`Call error for ${toPhone}:`, err.message);
+        }
       }
     }
-    res.json({ called: calledCount, total: leads.length, mock: isMock });
+    res.json({ called: calledCount, total: leads.length, mock: isMock, errors: errors.length > 0 ? errors : undefined });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
