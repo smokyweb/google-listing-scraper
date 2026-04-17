@@ -10,6 +10,7 @@ const nav = [
   { to: '/calls', label: 'Phone Calls', icon: '📞' },
   { to: '/voice', label: 'Voice Message', icon: '🎙️' },
   { to: '/callbacks', label: 'Call Backs', icon: '🔔' },
+  { to: '/voicemail-drop', label: 'Voicemail Drop', icon: '📩' },
   { to: '/sms', label: 'SMS', icon: '💬' },
   { to: '/sms-inbox', label: 'SMS Inbox', icon: '📨' },
   { to: '/sales-users', label: 'Sales Users', icon: '👥' },
