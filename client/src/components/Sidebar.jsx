@@ -6,6 +6,7 @@ const nav = [
   { to: '/scraper', label: 'Scraper', icon: '🔍' },
   { to: '/history', label: 'Scrape History', icon: '📜' },
   { to: '/leads', label: 'Leads', icon: '👥' },
+  { to: '/import', label: 'Import Leads', icon: '📂' },
   { to: '/email', label: 'Email Campaign', icon: '✉️' },
   { to: '/calls', label: 'Phone Calls', icon: '📞' },
   { to: '/voice', label: 'Voice Message', icon: '🎙️' },
