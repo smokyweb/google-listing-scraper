@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
+import AIScriptBox from '../components/AIScriptBox';
 
 export default function SMS() {
   const [templates, setTemplates] = useState([]);
@@ -120,6 +121,9 @@ export default function SMS() {
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
             {sending ? 'Sending...' : selectedIds.size > 0 ? `Send to ${selectedIds.size} Selected` : `Send to All (${leads.length})`}
           </button>
+
+          {/* AI Script Generator */}
+          <AIScriptBox type="sms" onGenerated={m => setMessage(m)} placeholder='e.g. "Short text for electricians with a scheduling link"' />
 
           {result && (
             <div className={`p-4 rounded-lg text-sm ${result.error ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>

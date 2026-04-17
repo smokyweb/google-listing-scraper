@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
+import AIScriptBox from '../components/AIScriptBox';
 
 export default function EmailCampaign() {
   const [templates, setTemplates] = useState([]);
@@ -122,6 +123,9 @@ export default function EmailCampaign() {
               <div className="text-sm text-gray-300 border-t border-gray-700 pt-2" dangerouslySetInnerHTML={{ __html: body.replace(/{business_name}/g,'Acme Plumbing').replace(/{city}/g,'Austin').replace(/{state}/g,'TX') }} />
             </div>
           )}
+          {/* AI Script Generator */}
+          <AIScriptBox type="email" onGenerated={b => setBody(b)} placeholder='e.g. "Professional follow-up for roofing companies, mention storm damage"' />
+
           {result && (
             <div className={`p-4 rounded-lg text-sm ${result.error ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>
               {result.error || `✅ Sent ${result.sent} of ${result.total} email(s)${result.mock ? ' (mock mode)' : ''}`}

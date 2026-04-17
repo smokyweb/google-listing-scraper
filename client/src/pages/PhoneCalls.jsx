@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
+import AIScriptBox from '../components/AIScriptBox';
 
 const PAUSE_OPTIONS = [
   { label: 'Short pause', insert: ',' },
@@ -171,6 +172,9 @@ export default function PhoneCalls() {
             <textarea ref={scriptRef} value={script} onChange={e => { setScript(e.target.value); setSelectedScriptId(''); }} rows={6}
               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
           </div>
+
+          {/* AI Script Generator */}
+          <AIScriptBox type="call" onGenerated={s => { setScript(s); setSelectedScriptId(''); }} placeholder='e.g. "Friendly outreach for plumbers in Austin Texas"' />
 
           {/* IVR info */}
           <div className="bg-gray-800 rounded-lg p-3 text-xs text-gray-400 space-y-1">

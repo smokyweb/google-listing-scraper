@@ -19,6 +19,12 @@ const SECTIONS = [
     ],
   },
   {
+    title: 'AI (Gemini)',
+    fields: [
+      { key: 'gemini_api_key', label: 'Gemini API Key', type: 'password', placeholder: 'AIza...' },
+    ],
+  },
+  {
     title: 'ElevenLabs',
     fields: [
       { key: 'elevenlabs_api_key', label: 'API Key', type: 'password' },

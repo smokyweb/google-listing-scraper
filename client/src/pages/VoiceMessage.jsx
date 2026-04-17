@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
+import AIScriptBox from '../components/AIScriptBox';
 
 const FIELDS = [
   { label: 'Company Name', value: '{company_name}' },
@@ -155,6 +156,9 @@ export default function VoiceMessage() {
               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none" />
             <p className="text-xs text-gray-600 mt-1">After the script plays, callers hear: "Press 1 to speak to staff · Press 2 for callback · Press 3 to schedule meeting · Press 4 to unsubscribe"</p>
           </div>
+
+          {/* AI Script Generator */}
+          <AIScriptBox type="voice" onGenerated={s => { setScript(s); setSelected(null); }} placeholder='e.g. "Warm intro for HVAC companies in the South, mention summer deals"' />
 
           {msg && (
             <div className={`mb-4 px-4 py-3 rounded-lg text-sm ${msg.type === 'error' ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>
