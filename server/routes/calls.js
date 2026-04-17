@@ -17,7 +17,7 @@ async function generateElevenLabsAudio(text, config, baseUrl) {
     const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config.voiceId}`, {
       method: 'POST',
       headers: { 'xi-api-key': config.apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text, model_id: 'eleven_turbo_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 } }),
     });
     if (!resp.ok) throw new Error(`ElevenLabs ${resp.status}`);
     const buffer = Buffer.from(await resp.arrayBuffer());
@@ -269,10 +269,7 @@ router.post('/trigger', authMiddleware, async (req, res) => {
 
     let calledCount = 0;
     const elevenLabsConfig = getElevenLabsConfig();
-    const menuAudioUrl = await generateElevenLabsAudio(
-      'Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.',
-      elevenLabsConfig, baseUrl
-    );
+    // Note: Menu uses SignalWire <Say> to preserve ElevenLabs credits for personalized scripts
 
     const errors = [];
     for (const lead of leads) {
@@ -302,9 +299,8 @@ router.post('/trigger', authMiddleware, async (req, res) => {
           const scriptPart = scriptAudioUrl
             ? `<Play>${scriptAudioUrl}</Play>`
             : say(personalized);
-          const menuPart = menuAudioUrl
-            ? `<Play>${menuAudioUrl}</Play>`
-            : say('Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.');
+          // Menu always uses SignalWire Say to save ElevenLabs credits
+          const menuPart = say('Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.');
 
           const ivrTwiml = `<?xml version="1.0" encoding="UTF-8"?><Response>
   ${scriptPart}
