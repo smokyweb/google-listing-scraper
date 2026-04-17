@@ -1,6 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
 
+const PAUSE_OPTIONS = [
+  { label: 'Short pause', insert: ',' },
+  { label: 'Sentence pause', insert: '.' },
+  { label: 'Long pause ...', insert: '...' },
+  { label: '1s break', insert: '<break time="1s" />' },
+  { label: '2s break', insert: '<break time="2s" />' },
+  { label: 'Em dash —', insert: ' — ' },
+];
+
 export default function PhoneCalls() {
   const [voiceScripts, setVoiceScripts] = useState([]);
   const [selectedScriptId, setSelectedScriptId] = useState('');
@@ -14,6 +23,16 @@ export default function PhoneCalls() {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
   const selectAllRef = useRef(null);
+  const scriptRef = useRef(null);
+
+  const insertAtCursor = (text) => {
+    const ta = scriptRef.current;
+    if (!ta) { setScript(s => s + text); return; }
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const newScript = script.substring(0, start) + text + script.substring(end);
+    setScript(newScript);
+    setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + text.length; ta.focus(); }, 0);
+  };
 
   useEffect(() => {
     apiFetch('/leads?limit=500')
@@ -135,8 +154,21 @@ export default function PhoneCalls() {
           {/* Script editor */}
           <div>
             <label className="block text-xs text-gray-400 mb-1">Script Text <span className="text-gray-600">(edit or write custom)</span></label>
-            <p className="text-xs text-gray-600 mb-1">Fields: {'{business_name}'} {'{city}'} {'{state}'} {'{keyword}'} {'{phone}'} {'{email}'}</p>
-            <textarea value={script} onChange={e => { setScript(e.target.value); setSelectedScriptId(''); }} rows={6}
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              <span className="text-xs text-gray-500 self-center">Fields:</span>
+              {['{business_name}','{city}','{state}','{keyword}','{phone}','{email}'].map(f => (
+                <button key={f} onClick={() => insertAtCursor(f)}
+                  className="px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-mono transition-colors">{f}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              <span className="text-xs text-gray-500 self-center">Pauses:</span>
+              {PAUSE_OPTIONS.map(p => (
+                <button key={p.label} onClick={() => insertAtCursor(p.insert)}
+                  className="px-2 py-0.5 bg-indigo-900/60 hover:bg-indigo-800/60 text-indigo-300 border border-indigo-700/50 rounded text-xs transition-colors">{p.label}</button>
+              ))}
+            </div>
+            <textarea ref={scriptRef} value={script} onChange={e => { setScript(e.target.value); setSelectedScriptId(''); }} rows={6}
               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
           </div>
 
