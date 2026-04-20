@@ -1,6 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
 import AIScriptBox from '../components/AIScriptBox';
+
+const SMS_FIELDS = [
+  { label: '{business_name}', value: '{business_name}' },
+  { label: '{city}', value: '{city}' },
+  { label: '{state}', value: '{state}' },
+  { label: '{keyword}', value: '{keyword}' },
+  { label: '{phone}', value: '{phone}' },
+];
 
 export default function SMS() {
   const [templates, setTemplates] = useState([]);
@@ -15,6 +23,16 @@ export default function SMS() {
   const [result, setResult] = useState(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateMsg, setTemplateMsg] = useState(null);
+  const msgRef = useRef(null);
+
+  const insertField = (text) => {
+    const ta = msgRef.current;
+    if (!ta) { setMessage(m => m + text); return; }
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const newMsg = message.substring(0, start) + text + message.substring(end);
+    setMessage(newMsg);
+    setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + text.length; ta.focus(); }, 0);
+  };
 
   const loadTemplates = () => apiFetch('/sms-templates').then(setTemplates).catch(() => {});
 
@@ -108,7 +126,14 @@ export default function SMS() {
 
           <div>
             <label className="block text-xs text-gray-400 mb-1">Message</label>
-            <textarea value={message} onChange={e => setMessage(e.target.value)} rows={4} className={`${inp} resize-none`} />
+            <div className="flex flex-wrap gap-1 mb-2">
+              <span className="text-xs text-gray-500 self-center">Insert:</span>
+              {SMS_FIELDS.map(f => (
+                <button key={f.value} onClick={() => insertField(f.value)}
+                  className="px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-mono transition-colors">{f.label}</button>
+              ))}
+            </div>
+            <textarea ref={msgRef} value={message} onChange={e => setMessage(e.target.value)} rows={4} className={`${inp} resize-none`} />
           </div>
 
           <div className="bg-gray-800 rounded-lg p-3">

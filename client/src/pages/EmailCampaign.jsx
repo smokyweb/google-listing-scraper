@@ -1,6 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
 import AIScriptBox from '../components/AIScriptBox';
+
+const EMAIL_FIELDS = [
+  { label: '{business_name}', value: '{business_name}' },
+  { label: '{city}', value: '{city}' },
+  { label: '{state}', value: '{state}' },
+  { label: '{keyword}', value: '{keyword}' },
+  { label: '{email}', value: '{email}' },
+  { label: '{phone}', value: '{phone}' },
+];
+
+const EMAIL_SNIPPETS = [
+  { label: '<br>', value: '<br>' },
+  { label: '<b>bold</b>', value: '<b>text</b>' },
+  { label: '<p>para</p>', value: '<p>Your text here</p>' },
+  { label: 'unsubscribe link', value: '<a href="{unsubscribe_url}">Unsubscribe</a>' },
+];
 
 export default function EmailCampaign() {
   const [templates, setTemplates] = useState([]);
@@ -17,6 +33,18 @@ export default function EmailCampaign() {
   const [templateMsg, setTemplateMsg] = useState(null);
   const [senders, setSenders] = useState([]);
   const [selectedSenderId, setSelectedSenderId] = useState('');
+  const bodyRef = useRef(null);
+  const subjectRef = useRef(null);
+
+  const insertIntoField = (ref, setter, text) => {
+    const ta = ref.current;
+    if (!ta) return;
+    const start = ta.selectionStart, end = ta.selectionEnd;
+    const current = ta.value;
+    const newVal = current.substring(0, start) + text + current.substring(end);
+    setter(newVal);
+    setTimeout(() => { ta.selectionStart = ta.selectionEnd = start + text.length; ta.focus(); }, 0);
+  };
 
   const loadTemplates = () => apiFetch('/email-templates').then(setTemplates).catch(() => {});
 
@@ -111,12 +139,33 @@ export default function EmailCampaign() {
           </div>
 
           <div>
-            <label className="block text-sm text-gray-400 mb-1">Subject</label>
-            <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="e.g. Grow your {business_name} with our services" className={inp} />
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm text-gray-400">Subject</label>
+              <div className="flex gap-1">
+                {EMAIL_FIELDS.slice(0,4).map(f => (
+                  <button key={f.value} onClick={() => insertIntoField(subjectRef, setSubject, f.value)}
+                    className="px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-mono transition-colors">{f.label}</button>
+                ))}
+              </div>
+            </div>
+            <input ref={subjectRef} value={subject} onChange={e => setSubject(e.target.value)} placeholder="e.g. Grow your {business_name} with our services" className={inp} />
           </div>
           <div>
             <label className="block text-sm text-gray-400 mb-1">Body (HTML)</label>
-            <textarea value={body} onChange={e => setBody(e.target.value)} rows={8}
+            <div className="flex flex-wrap gap-1 mb-2">
+              <span className="text-xs text-gray-500 self-center">Fields:</span>
+              {EMAIL_FIELDS.map(f => (
+                <button key={f.value} onClick={() => insertIntoField(bodyRef, setBody, f.value)}
+                  className="px-1.5 py-0.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-mono transition-colors">{f.label}</button>
+              ))}
+              <span className="text-xs text-gray-600 mx-1">|</span>
+              <span className="text-xs text-gray-500 self-center">HTML:</span>
+              {EMAIL_SNIPPETS.map(s => (
+                <button key={s.label} onClick={() => insertIntoField(bodyRef, setBody, s.value)}
+                  className="px-1.5 py-0.5 bg-indigo-900/50 hover:bg-indigo-800/50 text-indigo-300 rounded text-xs font-mono transition-colors">{s.label}</button>
+              ))}
+            </div>
+            <textarea ref={bodyRef} value={body} onChange={e => setBody(e.target.value)} rows={8}
               placeholder="<p>Hi {business_name},</p><p>We help businesses in {city}, {state}...</p>"
               className={`${inp} font-mono text-sm resize-none`} />
           </div>
