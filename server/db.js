@@ -155,6 +155,19 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS call_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    lead_name TEXT,
+    lead_phone TEXT,
+    scrape_id INTEGER,
+    call_sid TEXT,
+    outcome TEXT DEFAULT 'initiated',
+    button_pressed TEXT,
+    duration_seconds INTEGER DEFAULT 0,
+    called_at TEXT DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS sms_deliveries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     lead_id INTEGER,

@@ -3,6 +3,7 @@ import { clearToken } from '../api';
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: '📊' },
+  { to: '/reports', label: 'Reports', icon: '📊' },
   { to: '/scraper', label: 'Scraper', icon: '🔍' },
   { to: '/history', label: 'Scrape History', icon: '📜' },
   { to: '/leads', label: 'Leads', icon: '👥' },

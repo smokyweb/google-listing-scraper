@@ -350,7 +350,16 @@ router.post('/ivr-handler', async (req, res) => {
       .run(callSid, lead.id, fromPhone);
   }
 
+  // Log call outcome
+  function logCall(outcome, button) {
+    if (lead) {
+      db.prepare('INSERT INTO call_logs (lead_id, lead_name, lead_phone, scrape_id, call_sid, outcome, button_pressed) VALUES (?,?,?,?,?,?,?)')
+        .run(lead.id, lead.name, fromPhone, lead.scrape_id||null, callSid, outcome, button||null);
+    }
+  }
+
   if (digit === '1') {
+    logCall('transferred', '1');
     return res.type('text/xml').send(twiml(`${say('Connecting you to a live staff member. Please hold.')} <Dial>${transferNumber}</Dial>`));
   }
   if (digit === '2') {
@@ -361,6 +370,7 @@ router.post('/ivr-handler', async (req, res) => {
       ${say('We did not receive your input. Goodbye.')} <Hangup/>`));
   }
   if (digit === '3') {
+    logCall('meeting_scheduled', '3');
     if (callSid !== 'unknown') updateIvrSession(callSid, 'calendar_ask_day', {});
     return res.type('text/xml').send(twiml(`
       <Gather input="speech" action="${baseUrl}/api/calls/ivr-calendar-day" method="POST" language="en-US" timeout="10">
@@ -369,12 +379,12 @@ router.post('/ivr-handler', async (req, res) => {
       ${say('We did not receive your input. Goodbye.')} <Hangup/>`));
   }
   if (digit === '4') {
-    if (lead) {
-      db.prepare("UPDATE leads SET unsubscribed=1 WHERE id=?").run(lead.id);
-    }
+    logCall('unsubscribed', '4');
+    if (lead) db.prepare("UPDATE leads SET unsubscribed=1 WHERE id=?").run(lead.id);
     return res.type('text/xml').send(twiml(`${say('You have been removed from our list. Thank you. Goodbye.')} <Hangup/>`));
   }
-  // Default: replay menu
+  // Default: replay menu (no input / hangup)
+  logCall('no_input', null);
   return res.type('text/xml').send(twiml(`
     <Gather numDigits="1" action="${baseUrl}/api/calls/ivr-handler" method="POST" timeout="10">
       ${say('Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.')}
@@ -524,6 +534,14 @@ async function finishCalendarBooking(res, session, lead, email) {
 
 // â”€â”€â”€ RECORDING DONE (voicemail) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/recording-done', (req, res) => {
+  // Log voicemail outcome
+  const fromPhone = req.body.To || req.body.From || '';
+  const callSid = req.body.CallSid || '';
+  const lead = findLeadByPhone(fromPhone);
+  if (lead) {
+    db.prepare('INSERT INTO call_logs (lead_id, lead_name, lead_phone, scrape_id, call_sid, outcome) VALUES (?,?,?,?,?,?)')
+      .run(lead.id, lead.name, fromPhone, lead.scrape_id||null, callSid, 'voicemail_left');
+  }
   res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Thank you for your message. We will call you back shortly. Goodbye.</Say><Hangup/></Response>');
 });
 

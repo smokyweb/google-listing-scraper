@@ -23,6 +23,7 @@ import ImportLeads from './pages/ImportLeads';
 import Dialer from './pages/Dialer';
 import EmailSenders from './pages/EmailSenders';
 import QuickEmail from './pages/QuickEmail';
+import Reports from './pages/Reports';
 
 function Layout({ children }) {
   return (
@@ -73,6 +74,7 @@ export default function App() {
       <Route path="/dialer" element={<Layout><Dialer /></Layout>} />
       <Route path="/email-senders" element={<Layout><EmailSenders /></Layout>} />
       <Route path="/quick-email" element={<Layout><QuickEmail /></Layout>} />
+      <Route path="/reports" element={<Layout><Reports /></Layout>} />
       <Route path="/phone-numbers" element={<Layout><PhoneNumbers /></Layout>} />
       <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
       <Route path="/settings" element={<Layout><Settings /></Layout>} />
