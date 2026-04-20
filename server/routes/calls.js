@@ -182,10 +182,17 @@ async function getAvailableSlots(date) {
   }
 }
 
-async function createCalendarEvent(lead, slotDate, email) {
+async function createCalendarEvent(lead, slotDate, email, salespersonId) {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID || getSetting('google_calendar_client_id');
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET || getSetting('google_calendar_client_secret');
-  const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || getSetting('google_calendar_refresh_token');
+
+  // Use salesperson's calendar if available, otherwise fall back to admin calendar
+  let refreshToken = null;
+  if (salespersonId) {
+    const sp = db.prepare('SELECT gcal_refresh_token, gcal_access_token FROM sales_users WHERE id=?').get(salespersonId);
+    if (sp?.gcal_refresh_token) refreshToken = sp.gcal_refresh_token;
+  }
+  if (!refreshToken) refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || getSetting('google_calendar_refresh_token');
   if (!clientId || !clientSecret || !refreshToken) throw new Error('Calendar not configured');
 
   const auth = new google.auth.OAuth2(clientId, clientSecret);

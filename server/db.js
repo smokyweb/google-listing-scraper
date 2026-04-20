@@ -181,6 +181,10 @@ db.exec(`
 try { db.exec('ALTER TABLE leads ADD COLUMN scrape_id INTEGER REFERENCES scrapes(id)'); } catch(e) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN email_scraped INTEGER DEFAULT 0'); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN unsubscribed INTEGER DEFAULT 0"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_access_token TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_refresh_token TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_token_expiry INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_email TEXT"); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'scraped'"); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN status TEXT DEFAULT 'new'"); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN assigned_user_id INTEGER"); } catch(e) {}

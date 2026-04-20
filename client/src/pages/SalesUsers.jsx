@@ -1,6 +1,52 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 
+function CalendarConnectButton({ userId, currentEmail }) {
+  const [status, setStatus] = useState({ connected: !!currentEmail, email: currentEmail });
+  const [loading, setLoading] = useState(false);
+
+  const handleConnect = async () => {
+    setLoading(true);
+    try {
+      const data = await apiFetch(`/salesperson-calendar/auth-url?userId=${userId}`);
+      const popup = window.open(data.url, 'gcal_oauth', 'width=600,height=700,scrollbars=yes');
+      const handler = (e) => {
+        if (e.data?.type === 'gcal_connected') {
+          setStatus({ connected: true, email: e.data.email });
+          window.removeEventListener('message', handler);
+          setLoading(false);
+          popup?.close();
+        }
+      };
+      window.addEventListener('message', handler);
+      // Fallback if popup blocked
+      setTimeout(() => { setLoading(false); window.removeEventListener('message', handler); }, 120000);
+    } catch (err) {
+      alert('Error: ' + err.message);
+      setLoading(false);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!window.confirm('Disconnect Google Calendar?')) return;
+    await apiFetch(`/salesperson-calendar/disconnect?userId=${userId}`, { method: 'POST' });
+    setStatus({ connected: false, email: null });
+  };
+
+  if (status.connected) return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-green-400">✅ {status.email}</span>
+      <button onClick={handleDisconnect} className="text-xs text-red-400 hover:text-red-300">Disconnect</button>
+    </div>
+  );
+  return (
+    <button onClick={handleConnect} disabled={loading}
+      className="px-3 py-1.5 bg-blue-700 hover:bg-blue-600 text-white rounded text-xs transition-colors disabled:opacity-50">
+      {loading ? 'Opening...' : '📅 Connect Google Calendar'}
+    </button>
+  );
+}
+
 const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC'];
 
 export default function SalesUsers() {
@@ -88,6 +134,7 @@ export default function SalesUsers() {
               <th className="text-left px-4 py-3 text-xs text-gray-400 uppercase">Email</th>
               <th className="text-left px-4 py-3 text-xs text-gray-400 uppercase">States</th>
               <th className="text-left px-4 py-3 text-xs text-gray-400 uppercase">Phone</th>
+              <th className="text-left px-4 py-3 text-xs text-gray-400 uppercase">Google Calendar</th>
               <th className="text-left px-4 py-3 text-xs text-gray-400 uppercase">Status</th>
               <th className="px-4 py-3"></th>
             </tr></thead>
@@ -98,6 +145,7 @@ export default function SalesUsers() {
                   <td className="px-4 py-3 text-gray-300">{u.email}</td>
                   <td className="px-4 py-3 text-gray-400 text-sm">{JSON.parse(u.states||'[]').join(', ') || 'All states'}</td>
                   <td className="px-4 py-3 text-gray-400 text-sm">{u.phone_number_label || 'Default'}</td>
+                  <td className="px-4 py-3"><CalendarConnectButton userId={u.id} currentEmail={u.gcal_email} /></td>
                   <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded text-xs ${u.is_active ? 'bg-green-900/50 text-green-300' : 'bg-red-900/50 text-red-300'}`}>{u.is_active ? 'Active' : 'Inactive'}</span></td>
                   <td className="px-4 py-3 flex gap-2">
                     <button onClick={() => openEdit(u)} className="text-xs text-blue-400 hover:text-blue-300">Edit</button>
