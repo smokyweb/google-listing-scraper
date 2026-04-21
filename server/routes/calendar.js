@@ -14,7 +14,8 @@ function getOAuthClient() {
 
   if (!clientId || !clientSecret) return null;
 
-  const redirectUri = `http://localhost:${process.env.PORT || 3001}/api/calendar/callback`;
+  const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+  const redirectUri = `${baseUrl}/api/calendar/callback`;
   return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
