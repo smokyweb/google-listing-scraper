@@ -191,6 +191,26 @@ try { db.exec("ALTER TABLE leads ADD COLUMN assigned_user_id INTEGER"); } catch(
 try { db.exec("ALTER TABLE leads ADD COLUMN email_opens INTEGER DEFAULT 0"); } catch(e) {}
 try { db.exec("ALTER TABLE campaigns ADD COLUMN tracking_id TEXT"); } catch(e) {}
 
+// Seed Google Calendar OAuth from env vars if not already in DB
+const gcalKeys = [
+  ['google_calendar_client_id', process.env.GOOGLE_CALENDAR_CLIENT_ID],
+  ['google_calendar_client_secret', process.env.GOOGLE_CALENDAR_CLIENT_SECRET],
+  ['google_calendar_refresh_token', process.env.GOOGLE_CALENDAR_REFRESH_TOKEN],
+  ['gemini_api_key', process.env.GEMINI_API_KEY],
+  ['elevenlabs_api_key', process.env.ELEVENLABS_API_KEY],
+  ['elevenlabs_voice_id', process.env.ELEVENLABS_VOICE_ID],
+  ['signalwire_project_id', process.env.SIGNALWIRE_PROJECT_ID],
+  ['signalwire_token', process.env.SIGNALWIRE_TOKEN],
+  ['signalwire_space_url', process.env.SIGNALWIRE_SPACE_URL],
+  ['signalwire_phone_number', process.env.SIGNALWIRE_PHONE_NUMBER],
+  ['transfer_phone_number', process.env.TRANSFER_PHONE_NUMBER],
+  ['google_places_api_key', process.env.GOOGLE_PLACES_API_KEY],
+];
+const upsertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+for (const [key, val] of gcalKeys) {
+  if (val) upsertSetting.run(key, val);
+}
+
 // Seed default phone number from env if none exist
 const existingNumbers = db.prepare('SELECT COUNT(*) as count FROM phone_numbers').get();
 if (existingNumbers.count === 0 && process.env.SIGNALWIRE_PHONE_NUMBER) {
