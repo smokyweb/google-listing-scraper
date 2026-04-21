@@ -260,7 +260,7 @@ router.post('/more/:scrapeId', authMiddleware, async (req, res) => {
 router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
   try {
     const { scrapeId } = req.params;
-    const leads = db.prepare('SELECT * FROM leads WHERE scrape_id = ? AND website != ""').all(scrapeId);
+    const leads = db.prepare("SELECT * FROM leads WHERE scrape_id = ? AND website != '' AND website IS NOT NULL").all(scrapeId);
 
     let updated = 0;
     for (const lead of leads) {
