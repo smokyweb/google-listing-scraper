@@ -543,6 +543,25 @@ async function finishCalendarBooking(res, session, lead, email) {
 }
 
 // â”€â”€â”€ RECORDING DONE (voicemail) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- INBOUND CALL HANDLER ---
+// Forward incoming calls to the transfer number
+// Set this as the LaML webhook for inbound voice on your SignalWire numbers
+router.post('/inbound', (req, res) => {
+  const transferNumber = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
+  const callerNumber = req.body.From || 'unknown';
+  const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+  console.log('[INBOUND CALL] From:', callerNumber, '-> forwarding to', transferNumber);
+  return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Please hold while we connect your call.</Say><Dial callerId="' + (req.body.To || '') + '" timeout="30" action="' + baseUrl + '/api/calls/inbound-status" method="POST">' + transferNumber + '</Dial><Say voice="alice">Sorry, no one is available. Please try again later.</Say></Response>');
+});
+
+// POST /api/calls/inbound-status -- called after dial completes
+router.post('/inbound-status', (req, res) => {
+  const status = req.body.DialCallStatus || 'unknown';
+  if (status !== 'completed') {
+    return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Sorry, no one is available. Please leave a message after the beep.</Say><Record maxLength="60"/></Response>');
+  }
+  return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+});
 router.post('/recording-done', (req, res) => {
   // Log voicemail outcome
   const fromPhone = req.body.To || req.body.From || '';
@@ -578,6 +597,7 @@ router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
 
 
 
