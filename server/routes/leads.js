@@ -54,14 +54,15 @@ router.post('/', authMiddleware, (req, res) => {
 });
 
 router.patch('/:id', authMiddleware, (req, res) => {
-  const { name, phone, email, website, address, city, state, keyword, unsubscribed, status, assigned_user_id } = req.body;
+  const { name, phone, email, website, address, city, state, keyword, unsubscribed, status, assigned_user_id, notes } = req.body;
   const existing = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  db.prepare(`UPDATE leads SET name=?, phone=?, email=?, website=?, address=?, city=?, state=?, keyword=?, unsubscribed=?, status=?, assigned_user_id=? WHERE id=?`)
+  db.prepare(`UPDATE leads SET name=?, phone=?, email=?, website=?, address=?, city=?, state=?, keyword=?, unsubscribed=?, status=?, assigned_user_id=?, notes=? WHERE id=?`)
     .run(name??existing.name, phone??existing.phone, email??existing.email, website??existing.website,
          address??existing.address, city??existing.city, state??existing.state, keyword??existing.keyword,
          unsubscribed??existing.unsubscribed, status??existing.status??'new',
          assigned_user_id!==undefined ? assigned_user_id : existing.assigned_user_id,
+         notes!==undefined ? notes : (existing.notes||''),
          req.params.id);
   res.json({ success: true });
 });

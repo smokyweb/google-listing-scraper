@@ -9,7 +9,7 @@ const LEAD_STATUS_COLORS = {
 const LEAD_STATUSES = ['new','callback','scheduled','not_interested','send_quote','completed'];
 const LEAD_STATUS_LABELS = { new:'New', callback:'Call Back', scheduled:'Scheduled', not_interested:'Not Interested', send_quote:'Send Quote', completed:'Completed' };
 
-export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggleAll, showSelect=false, onStatusChange, onEdit, onDelete, onCall, onSMS, onEmail }) {
+export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggleAll, showSelect=false, onStatusChange, onEdit, onDelete, onCall, onSMS, onEmail, onNotesSave }) {
   const allSelected = leads.length > 0 && leads.every(l => selectedIds.has(l.id));
 
   const channelBadge = (status) => {
@@ -29,6 +29,7 @@ export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggl
             <th className="p-3">Website</th>
             <th className="p-3">Status</th>
             <th className="p-3">Opens</th>
+            <th className="p-3">Notes</th>
             <th className="p-3">Channels</th>
             {(onEdit || onDelete) && <th className="p-3"></th>}
           </tr>
@@ -59,6 +60,18 @@ export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggl
                 )}
               </td>
               <td className="p-3 text-gray-400 text-xs">{lead.email_opens > 0 ? <span className="text-green-400">{lead.email_opens} opens</span> : '—'}</td>
+              <td className="p-3">
+                {onNotesSave ? (
+                  <input
+                    defaultValue={lead.notes || ''}
+                    onBlur={e => { if (e.target.value !== (lead.notes||'')) onNotesSave(lead.id, e.target.value); }}
+                    placeholder="Add note..."
+                    className="w-full min-w-[120px] px-2 py-1 bg-gray-800 border border-gray-700 rounded text-white text-xs focus:outline-none focus:border-blue-500"
+                  />
+                ) : (
+                  <span className="text-gray-400 text-xs">{lead.notes || '—'}</span>
+                )}
+              </td>
               <td className="p-3">
                 <div className="flex gap-1 flex-wrap">
                   {channelBadge(lead.email_status)}

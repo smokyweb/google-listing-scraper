@@ -84,6 +84,10 @@ export default function Leads() {
     fetchLeads();
   };
 
+  const saveNotes = async (id, notes) => {
+    await apiFetch(`/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ notes }) });
+  };
+
   const deleteLead = async (id) => {
     if (!window.confirm('Delete this lead?')) return;
     await apiFetch(`/leads/${id}`, { method: 'DELETE' });
@@ -229,6 +233,7 @@ export default function Leads() {
             onCall={setCallLead}
             onSMS={setSmsLead}
             onEmail={setEmailLead}
+            onNotesSave={saveNotes}
           />
         )}
       </div>
@@ -359,7 +364,7 @@ function QuickSMSModal({ lead, onClose, onSent }) {
 }
 
 function EditLeadModal({ lead, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: lead.name||'', phone: lead.phone||'', email: lead.email||'', website: lead.website||'', address: lead.address||'', city: lead.city||'', state: lead.state||'', keyword: lead.keyword||'' });
+  const [form, setForm] = useState({ name: lead.name||'', phone: lead.phone||'', email: lead.email||'', website: lead.website||'', address: lead.address||'', city: lead.city||'', state: lead.state||'', keyword: lead.keyword||'', notes: lead.notes||'' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const handle = async (e) => {
@@ -387,6 +392,7 @@ function EditLeadModal({ lead, onClose, onSaved }) {
             <div className="col-span-2"><label className="text-xs text-gray-400">Address</label><input value={form.address} onChange={f('address')} className={inp} /></div>
             <div><label className="text-xs text-gray-400">City</label><input value={form.city} onChange={f('city')} className={inp} /></div>
             <div><label className="text-xs text-gray-400">State</label><input value={form.state} onChange={f('state')} className={inp} /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-400">Notes</label><textarea value={form.notes} onChange={f('notes')} rows={3} placeholder="Add notes about this lead..." className={`${inp} resize-none`} /></div>
           </div>
           <div className="flex gap-2 pt-2">
             <button type="submit" disabled={saving} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-50">{saving ? 'Saving...' : 'Save'}</button>
