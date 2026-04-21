@@ -85,8 +85,10 @@ async function scrapeGooglePlaces(keyword, city, state, apiKey, maxResults = 20,
 
   for (let page = 0; page < pages; page++) {
     const query = `${keyword} in ${city}, ${state}`;
-    let url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${apiKey}`;
-    if (nextPageToken && page > 0) url = `https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken=${encodeURIComponent(nextPageToken)}&key=${apiKey}`;
+    // Use pagetoken if we have one (either passed in or from previous page)
+    let url = nextPageToken
+      ? `https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken=${encodeURIComponent(nextPageToken)}&key=${apiKey}`
+      : `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${apiKey}`;
 
     const resp = await fetch(url);
     const data = await resp.json();
