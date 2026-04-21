@@ -93,7 +93,10 @@ async function scrapeGooglePlaces(keyword, city, state, apiKey, maxResults = 20,
     const resp = await fetch(url);
     const data = await resp.json();
 
-    if (data.status === 'INVALID_REQUEST' && page > 0) break; // page token not ready yet
+    if (data.status === 'INVALID_REQUEST') {
+      if (page === 0) throw new Error(`Google Places API error: ${data.status} - ${data.error_message || ''}`);
+      break; // page token expired or invalid, stop gracefully
+    }
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
       if (page === 0) throw new Error(`Google Places API error: ${data.status} - ${data.error_message || ''}`);
       break;
@@ -202,12 +205,22 @@ router.post('/more/:scrapeId', authMiddleware, async (req, res) => {
   try {
     const scrape = db.prepare('SELECT * FROM scrapes WHERE id=?').get(req.params.scrapeId);
     if (!scrape) return res.status(404).json({ error: 'Scrape not found' });
-    if (!scrape.next_page_token) return res.status(400).json({ error: 'No more results available for this scrape' });
+    if (!scrape.next_page_token) return res.status(400).json({ error: 'No more results available for this scrape. Google only provides up to 3 pages per query.' });
 
     const apiKey = getApiKey();
     if (!apiKey) return res.status(400).json({ error: 'Google Places API key not configured' });
 
-    const results = await scrapeGooglePlaces(scrape.keyword, scrape.city, scrape.state, apiKey, 20, scrape.next_page_token);
+    let results;
+    try {
+      results = await scrapeGooglePlaces(scrape.keyword, scrape.city, scrape.state, apiKey, 20, scrape.next_page_token);
+    } catch(err) {
+      // Clear expired token from DB
+      db.prepare('UPDATE scrapes SET next_page_token = NULL WHERE id = ?').run(req.params.scrapeId);
+      if (err.message.includes('INVALID_REQUEST')) {
+        return res.status(400).json({ error: 'Page token has expired (Google tokens last ~2 minutes). Run a new scrape to get more results.' });
+      }
+      throw err;
+    }
     const nextPageToken = scrapeGooglePlaces._lastPageToken || null;
 
     const withEmails = await Promise.all(results.map(async (lead) => {
