@@ -82,32 +82,33 @@ async function scrapeGooglePlaces(keyword, city, state, apiKey, maxResults = 20,
   let allPlaces = [];
   let nextPageToken = pageToken;
   const pages = Math.ceil(maxResults / 20);
+  const query = `${keyword} in ${city}, ${state}`;
+  const PLACES_API = 'https://places.googleapis.com/v1/places:searchText';
+  const FIELD_MASK = 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.id,nextPageToken';
 
   for (let page = 0; page < pages; page++) {
-    const query = `${keyword} in ${city}, ${state}`;
-    // Use pagetoken if we have one (either passed in or from previous page)
-    let url = nextPageToken
-      ? `https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken=${encodeURIComponent(nextPageToken)}&key=${apiKey}`
-      : `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${apiKey}`;
+    const body = { textQuery: query, pageSize: 20 };
+    if (nextPageToken) body.pageToken = nextPageToken;
 
-    const resp = await fetch(url);
+    const resp = await fetch(PLACES_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': FIELD_MASK },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (page === 0) throw new Error(`Google Places API error: ${resp.status} - ${err.error?.message || ''}`);
+      break;
+    }
+
     const data = await resp.json();
-
-    if (data.status === 'INVALID_REQUEST') {
-      if (page === 0) throw new Error(`Google Places API error: ${data.status} - ${data.error_message || ''}`);
-      nextPageToken = null; // no more pages available from Google
-      break;
-    }
-    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-      if (page === 0) throw new Error(`Google Places API error: ${data.status} - ${data.error_message || ''}`);
-      break;
-    }
-
-    allPlaces.push(...(data.results || []));
-    nextPageToken = data.next_page_token || null;
+    const places = data.places || [];
+    allPlaces.push(...places);
+    nextPageToken = data.nextPageToken || null;
     if (!nextPageToken || allPlaces.length >= maxResults) break;
-    // Google requires a 2-second delay before using next_page_token
-    await new Promise(r => setTimeout(r, 2000));
+    // Small delay between pages
+    await new Promise(r => setTimeout(r, 500));
   }
 
   // Store the last next_page_token for "Scrape More" functionality
@@ -115,18 +116,21 @@ async function scrapeGooglePlaces(keyword, city, state, apiKey, maxResults = 20,
 
   const leads = [];
   for (const place of allPlaces.slice(0, maxResults)) {
-    const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,website,formatted_address&key=${apiKey}`;
-    const detailResp = await fetch(detailUrl);
-    const detail = await detailResp.json();
-    const r = detail.result || {};
-
-    leads.push({
-      name: r.name || place.name,
-      phone: r.formatted_phone_number || '',
-      email: '',
-      website: r.website || '',
-      address: r.formatted_address || place.formatted_address || '',
-    });
+    // Map new API format to our lead format
+    const detailUrl = place.id ? `https://places.googleapis.com/v1/places/${place.id}?fields=displayName,formattedAddress,nationalPhoneNumber,websiteUri&key=${apiKey}` : null;
+    let detail = place;
+    if (detailUrl) {
+      try {
+        const dr = await fetch(detailUrl, { headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': 'displayName,formattedAddress,nationalPhoneNumber,websiteUri' } });
+        if (dr.ok) detail = await dr.json();
+      } catch {}
+    }
+    // Use data from the search result directly (avoid extra detail call if we have it)
+    const name = (detail.displayName?.text || place.displayName?.text || '');
+    const phone = detail.nationalPhoneNumber || place.nationalPhoneNumber || '';
+    const website = detail.websiteUri || place.websiteUri || '';
+    const address = detail.formattedAddress || place.formattedAddress || '';
+    leads.push({ name, phone, email: '', website, address });
   }
   return leads;
 }
