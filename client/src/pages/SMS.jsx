@@ -15,7 +15,10 @@ export default function SMS() {
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [message, setMessage] = useState('Hi {business_name}! We noticed your listing in {city}, {state} and would love to help grow your business. Book a free consultation: https://your-scheduling-link.com');
+  const [allLeads, setAllLeads] = useState([]);
   const [leads, setLeads] = useState([]);
+  const [scrapes, setScrapes] = useState([]);
+  const [selectedScrapeId, setSelectedScrapeId] = useState('');
   const [phoneNumbers, setPhoneNumbers] = useState([]);
   const [selectedPhoneId, setSelectedPhoneId] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -24,6 +27,11 @@ export default function SMS() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateMsg, setTemplateMsg] = useState(null);
   const msgRef = useRef(null);
+
+  const filterByScrape = (scrapeId, all) => {
+    if (!scrapeId) return all;
+    return all.filter(l => String(l.scrape_id) === String(scrapeId));
+  };
 
   const insertField = (text) => {
     const ta = msgRef.current;
@@ -37,7 +45,8 @@ export default function SMS() {
   const loadTemplates = () => apiFetch('/sms-templates').then(setTemplates).catch(() => {});
 
   useEffect(() => {
-    apiFetch('/leads?limit=500').then(data => setLeads(data.leads.filter(l => l.phone))).catch(console.error);
+    apiFetch('/leads?limit=2000').then(data => { const withPhone = data.leads.filter(l => l.phone); setAllLeads(withPhone); setLeads(withPhone); }).catch(console.error);
+    apiFetch('/scrapes').then(setScrapes).catch(() => {});
     apiFetch('/phone-numbers').then(data => { setPhoneNumbers(data); const def = data.find(n=>n.is_default); if(def) setSelectedPhoneId(String(def.id)); }).catch(console.error);
     loadTemplates();
   }, []);
@@ -159,9 +168,16 @@ export default function SMS() {
         </div>
 
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-white">Recipients ({leads.length} with phone)</h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-lg font-semibold text-white">Recipients ({leads.length})</h3>
             {leads.length > 0 && <button onClick={toggleAll} className="text-xs text-blue-400 hover:text-blue-300">{selectedIds.size===leads.length ? 'Deselect all' : 'Select all'}</button>}
+          </div>
+          <div className="mb-3">
+            <select value={selectedScrapeId} onChange={e => { setSelectedScrapeId(e.target.value); setLeads(filterByScrape(e.target.value, allLeads)); setSelectedIds(new Set()); }}
+              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value="">All scrapes ({allLeads.length} leads)</option>
+              {scrapes.map(s => <option key={s.id} value={String(s.id)}>{s.name} ({allLeads.filter(l=>String(l.scrape_id)===String(s.id)).length})</option>)}
+            </select>
           </div>
           <div className="max-h-[500px] overflow-y-auto space-y-1">
             {leads.map(lead => (
