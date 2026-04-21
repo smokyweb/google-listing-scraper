@@ -354,6 +354,18 @@ router.post('/ivr-handler', async (req, res) => {
   const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
   const transferNumber = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
 
+
+  // If no digit pressed, this is a fresh inbound call — forward directly to staff
+  if (!digit) {
+    const lead = findLeadByPhone(fromPhone);
+    console.log('[INBOUND CALL] From:', fromPhone, lead ? '(known lead: '+lead.name+')' : '(unknown)');
+    return res.type('text/xml').send(twiml(
+      say('Thank you for calling. Please hold while we connect you to our team.') +
+      '<Dial timeout="30">' + transferNumber + '</Dial>' +
+      say('Sorry, no one is available right now. Please call back later.') +
+      '<Hangup/>'
+    ));
+  }
   const lead = findLeadByPhone(fromPhone);
   if (lead && callSid !== 'unknown') {
     db.prepare("INSERT OR REPLACE INTO ivr_sessions (call_sid, lead_id, lead_phone, step, data, updated_at) VALUES (?, ?, ?, 'menu', '{}', datetime('now'))")
@@ -597,6 +609,7 @@ router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
 
 
 
