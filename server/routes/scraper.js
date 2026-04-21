@@ -95,7 +95,8 @@ async function scrapeGooglePlaces(keyword, city, state, apiKey, maxResults = 20,
 
     if (data.status === 'INVALID_REQUEST') {
       if (page === 0) throw new Error(`Google Places API error: ${data.status} - ${data.error_message || ''}`);
-      break; // page token expired or invalid, stop gracefully
+      nextPageToken = null; // no more pages available from Google
+      break;
     }
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
       if (page === 0) throw new Error(`Google Places API error: ${data.status} - ${data.error_message || ''}`);
@@ -140,7 +141,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
     const apiKey = getApiKey();
     const isMock = !apiKey;
-    const limit = Math.min(Math.max(parseInt(maxResults) || 20, 20), 120); // cap at 120 (6 pages)
+    const limit = Math.min(Math.max(parseInt(maxResults) || 20, 20), 60); // Google Places API max is 60 results (3 pages) per query
     let results = isMock
       ? getMockResults(keyword, city, state)
       : await scrapeGooglePlaces(keyword, city, state, apiKey, limit);

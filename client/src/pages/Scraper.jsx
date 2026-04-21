@@ -118,12 +118,9 @@ export default function Scraper() {
             <label className="text-sm text-gray-400">Results:</label>
             <select value={maxResults} onChange={e => setMaxResults(Number(e.target.value))}
               className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
-              <option value={20}>20</option>
-              <option value={40}>40</option>
-              <option value={60}>60</option>
-              <option value={80}>80</option>
-              <option value={100}>100</option>
-              <option value={120}>120</option>
+              <option value={20}>20 (1 page)</option>
+              <option value={40}>40 (2 pages)</option>
+              <option value={60}>60 (max per query)</option>
             </select>
           </div>
           <button type="submit" disabled={loading || !selectedState || (!selectedCity && !customCity)}
