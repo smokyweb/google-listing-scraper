@@ -25,6 +25,7 @@ export default function PhoneCalls() {
 
   const filterByScrape = (scrapeId, all) => scrapeId ? all.filter(l => String(l.scrape_id) === String(scrapeId)) : all;
   const [calling, setCalling] = useState(false);
+  const [callDelay, setCallDelay] = useState(5);
   const [result, setResult] = useState(null);
   const [ttsLoading, setTtsLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
@@ -101,6 +102,7 @@ export default function PhoneCalls() {
           script,
           leadIds: selectedIds.size > 0 ? [...selectedIds] : undefined,
           phoneNumberId: selectedPhoneId ? parseInt(selectedPhoneId) : undefined,
+          callDelay: callDelay,
         }),
       });
       setResult(data);
@@ -181,6 +183,22 @@ export default function PhoneCalls() {
 
           {/* AI Script Generator */}
           <AIScriptBox type="call" onGenerated={s => { setScript(s); setSelectedScriptId(''); }} placeholder='e.g. "Friendly outreach for plumbers in Austin Texas"' />
+
+          {/* Call delay */}
+          <div className="flex items-center gap-3 p-3 bg-gray-800/60 rounded-lg">
+            <span className="text-xs text-gray-400 shrink-0">Delay between calls:</span>
+            <select value={callDelay} onChange={e => setCallDelay(Number(e.target.value))}
+              className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-white text-xs focus:outline-none focus:border-blue-500">
+              <option value={0}>No delay (fastest)</option>
+              <option value={5}>5 seconds</option>
+              <option value={10}>10 seconds</option>
+              <option value={15}>15 seconds</option>
+              <option value={30}>30 seconds</option>
+              <option value={60}>1 minute</option>
+              <option value={120}>2 minutes</option>
+            </select>
+            <span className="text-xs text-gray-600">Longer delays reduce spam flags</span>
+          </div>
 
           {/* IVR info */}
           <div className="bg-gray-800 rounded-lg p-3 text-xs text-gray-400 space-y-1">

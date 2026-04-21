@@ -253,7 +253,8 @@ router.post('/tts-preview', authMiddleware, async (req, res) => {
 // â”€â”€â”€ TRIGGER OUTBOUND CALLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/trigger', authMiddleware, async (req, res) => {
   try {
-    const { script, leadIds, phoneNumberId } = req.body;
+    const { script, leadIds, phoneNumberId, callDelay = 0 } = req.body;
+    const delayMs = Math.min(Math.max(parseInt(callDelay) || 0, 0), 120) * 1000; // cap at 2 min
     const activeScript = db.prepare('SELECT * FROM voice_scripts WHERE is_active = 1 LIMIT 1').get();
     const callScript = script || activeScript?.script || 'Hello {company_name}, this is a business outreach call.';
     const swConfig = getSignalWireConfig();
@@ -333,6 +334,8 @@ router.post('/trigger', authMiddleware, async (req, res) => {
             errors.push(errMsg);
             console.error('[CALL FAILED]', errMsg);
           }
+          // Delay between calls to reduce spam flags
+          if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
         } catch (err) {
           errors.push(`${lead.name}: ${err.message}`);
           console.error(`Call error for ${toPhone}:`, err.message);
@@ -575,5 +578,8 @@ router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
+
+
 
 
