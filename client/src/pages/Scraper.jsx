@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api';
 
@@ -7,11 +7,13 @@ export default function Scraper() {
   const [selectedState, setSelectedState] = useState('');
   const [selectedCity, setSelectedCity] = useState('');
   const [customCity, setCustomCity] = useState('');
+  const [maxResults, setMaxResults] = useState(20);
   const [states, setStates] = useState([]);
   const [cities, setCities] = useState([]);
   const [minPop, setMinPop] = useState(100000);
   const [loadingCities, setLoadingCities] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [scrapeMoreLoading, setScrapeMoreLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState('');
   const [recentScrapes, setRecentScrapes] = useState([]);
@@ -54,7 +56,7 @@ export default function Scraper() {
     const city = customCity || selectedCity;
     const stateCode = selectedState;
     try {
-      const data = await apiFetch('/scrape', { method: 'POST', body: JSON.stringify({ keyword, city, state: stateCode }) });
+      const data = await apiFetch('/scrape', { method: 'POST', body: JSON.stringify({ keyword, city, state: stateCode, maxResults }) });
       setResults(data);
       apiFetch('/scrapes').then(d => setRecentScrapes(d.slice(0, 5))).catch(() => {});
     } catch (err) { setError(err.message); }
@@ -111,12 +113,21 @@ export default function Scraper() {
           </div>
         )}
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-400">Results:</label>
+            <select value={maxResults} onChange={e => setMaxResults(Number(e.target.value))}
+              className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value={20}>20</option>
+              <option value={40}>40</option>
+              <option value={60}>60</option>
+            </select>
+          </div>
           <button type="submit" disabled={loading || !selectedState || (!selectedCity && !customCity)}
             className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50">
-            {loading ? 'Scraping & finding emails...' : '🔍 Scrape Google Listings'}
+            {loading ? 'Scraping & finding emails...' : 'ðŸ” Scrape Google Listings'}
           </button>
-          {loading && <p className="text-sm text-gray-400 animate-pulse">Scraping listings and scanning websites for emails…</p>}
+          {loading && <p className="text-sm text-gray-400 animate-pulse">Scraping listings and scanning websites for emailsâ€¦ {maxResults > 20 ? `(fetching up to ${maxResults} results)` : ''}</p>}
         </div>
       </form>
 
@@ -128,12 +139,24 @@ export default function Scraper() {
             <div>
               <h3 className="text-lg font-semibold text-white">{results.scrape_name}</h3>
               <p className="text-sm text-gray-400 mt-1">
-                {results.count} leads · {results.emails_found || 0} emails found
+                {results.count} leads Â· {results.emails_found || 0} emails found
                 {results.mock && <span className="ml-2 text-xs bg-yellow-900 text-yellow-300 px-2 py-1 rounded-full">Mock Data</span>}
               </p>
             </div>
-            <button onClick={() => navigate(`/scrapes/${results.scrape_id}`)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors">
-              View Full Scrape →
+            {results.has_more && (
+                <button onClick={async () => {
+                  setScrapeMoreLoading(true);
+                  try {
+                    const more = await apiFetch(`/scrape/more/${results.scrape_id}`, { method: 'POST' });
+                    setResults(prev => ({ ...prev, count: prev.count + more.count, emails_found: (prev.emails_found||0) + (more.emails_found||0), leads: [...(prev.leads||[]), ...more.leads], has_more: more.has_more }));
+                    apiFetch('/scrapes').then(d => setRecentScrapes(d.slice(0, 5))).catch(() => {});
+                  } catch(err) { setError(err.message); } finally { setScrapeMoreLoading(false); }
+                }} disabled={scrapeMoreLoading} className="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
+                  {scrapeMoreLoading ? 'Loading...' : '+ Scrape 20 More'}
+                </button>
+              )}
+              <button onClick={() => navigate(`/scrapes/${results.scrape_id}`)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors">
+              View Full Scrape → â†’
             </button>
           </div>
           <div className="overflow-x-auto">
@@ -145,9 +168,9 @@ export default function Scraper() {
                 {results.leads.map((lead, i) => (
                   <tr key={lead.id || i} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                     <td className="p-3 text-white font-medium">{lead.name}</td>
-                    <td className="p-3 text-gray-300">{lead.phone || '—'}</td>
-                    <td className="p-3">{lead.email ? <span className="text-green-400">{lead.email}</span> : <span className="text-gray-600">—</span>}</td>
-                    <td className="p-3">{lead.website ? <a href={lead.website} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline truncate block max-w-xs">{lead.website.replace(/^https?:\/\/(www\.)?/, '')}</a> : <span className="text-gray-600">—</span>}</td>
+                    <td className="p-3 text-gray-300">{lead.phone || 'â€”'}</td>
+                    <td className="p-3">{lead.email ? <span className="text-green-400">{lead.email}</span> : <span className="text-gray-600">â€”</span>}</td>
+                    <td className="p-3">{lead.website ? <a href={lead.website} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline truncate block max-w-xs">{lead.website.replace(/^https?:\/\/(www\.)?/, '')}</a> : <span className="text-gray-600">â€”</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -160,7 +183,7 @@ export default function Scraper() {
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-white">Recent Scrapes</h3>
-            <button onClick={() => navigate('/history')} className="text-sm text-blue-400 hover:text-blue-300">View All →</button>
+            <button onClick={() => navigate('/history')} className="text-sm text-blue-400 hover:text-blue-300">View All â†’</button>
           </div>
           <div className="space-y-2">
             {recentScrapes.map(s => (
@@ -172,7 +195,7 @@ export default function Scraper() {
                 <div className="flex items-center gap-4 text-sm">
                   <span className="text-gray-400">{s.lead_count} leads</span>
                   <span className={s.emails_found > 0 ? 'text-green-400' : 'text-gray-600'}>{s.emails_found || 0} emails</span>
-                  <button onClick={() => navigate(`/scrapes/${s.id}`)} className="text-xs text-blue-400 hover:text-blue-300">View →</button>
+                  <button onClick={() => navigate(`/scrapes/${s.id}`)} className="text-xs text-blue-400 hover:text-blue-300">View â†’</button>
                 </div>
               </div>
             ))}
@@ -182,3 +205,5 @@ export default function Scraper() {
     </div>
   );
 }
+
+

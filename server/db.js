@@ -23,6 +23,7 @@ db.exec(`
     state TEXT NOT NULL,
     lead_count INTEGER DEFAULT 0,
     mock INTEGER DEFAULT 0,
+    next_page_token TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );
 
@@ -181,6 +182,7 @@ db.exec(`
 try { db.exec('ALTER TABLE leads ADD COLUMN scrape_id INTEGER REFERENCES scrapes(id)'); } catch(e) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN email_scraped INTEGER DEFAULT 0'); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN unsubscribed INTEGER DEFAULT 0"); } catch(e) {}
+try { db.exec("ALTER TABLE scrapes ADD COLUMN next_page_token TEXT"); } catch(e) {}
 try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_access_token TEXT"); } catch(e) {}
 try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_refresh_token TEXT"); } catch(e) {}
 try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_token_expiry INTEGER"); } catch(e) {}
