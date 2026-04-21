@@ -140,7 +140,7 @@ router.post('/', authMiddleware, async (req, res) => {
 
     const apiKey = getApiKey();
     const isMock = !apiKey;
-    const limit = Math.min(Math.max(parseInt(maxResults) || 20, 20), 60); // cap at 60 (3 pages)
+    const limit = Math.min(Math.max(parseInt(maxResults) || 20, 20), 120); // cap at 120 (6 pages)
     let results = isMock
       ? getMockResults(keyword, city, state)
       : await scrapeGooglePlaces(keyword, city, state, apiKey, limit);
