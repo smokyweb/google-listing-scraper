@@ -89,13 +89,19 @@ router.post('/send', authMiddleware, async (req, res) => {
         updateLead.run(lead.id); sentCount++;
       } else {
         try {
+          // Normalize phone to E.164 format
+          let toPhone = (lead.phone || '').replace(/\D/g, '');
+          if (toPhone.length === 10) toPhone = '1' + toPhone;
+          if (!toPhone.startsWith('+')) toPhone = '+' + toPhone;
+
           const authHeader = Buffer.from(`${config.projectId}:${config.token}`).toString('base64');
           const r = await fetch(`https://${config.spaceUrl}/api/laml/2010-04-01/Accounts/${config.projectId}/Messages.json`, {
             method: 'POST',
             headers: { 'Authorization': `Basic ${authHeader}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ From: fromNumber, To: lead.phone, Body: personalized }),
+            body: new URLSearchParams({ From: fromNumber, To: toPhone, Body: personalized }),
           });
           if (r.ok) { updateLead.run(lead.id); sentCount++; }
+          else { const errBody = await r.text(); console.error(`[SMS] Failed ${toPhone}: ${r.status} ${errBody.substring(0,100)}`); }
         } catch (err) { console.error(`SMS error ${lead.phone}:`, err.message); }
       }
     }

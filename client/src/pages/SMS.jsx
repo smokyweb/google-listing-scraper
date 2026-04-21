@@ -76,7 +76,8 @@ export default function SMS() {
   const handleSend = async () => {
     setSending(true); setResult(null);
     try {
-      const data = await apiFetch('/sms/send', { method:'POST', body: JSON.stringify({ message, leadIds: selectedIds.size > 0 ? [...selectedIds] : undefined, phoneNumberId: selectedPhoneId ? parseInt(selectedPhoneId) : undefined }) });
+      const phoneId = selectedPhoneId ? parseInt(selectedPhoneId) : undefined;
+      const data = await apiFetch('/sms/send', { method:'POST', body: JSON.stringify({ message, leadIds: selectedIds.size > 0 ? [...selectedIds] : undefined, phoneNumberId: !isNaN(phoneId) ? phoneId : undefined }) });
       setResult(data);
     } catch(err) { setResult({ error: err.message }); }
     finally { setSending(false); }
