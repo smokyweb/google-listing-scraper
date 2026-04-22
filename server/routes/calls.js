@@ -355,13 +355,23 @@ router.post('/ivr-handler', async (req, res) => {
   const transferNumber = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
 
 
-  // If no digit pressed, this is a fresh inbound call — forward directly to staff
+  // If no digit pressed, this is a fresh inbound call — forward to salesperson or global transfer
   if (!digit) {
     const lead = findLeadByPhone(fromPhone);
-    console.log('[INBOUND CALL] From:', fromPhone, lead ? '(known lead: '+lead.name+')' : '(unknown)');
+    const calledNum = req.body.To || '';
+    let inboundForward = transferNumber;
+    try {
+      const calledNorm = calledNum.replace(/\D/g, '').slice(-10);
+      const phoneEntry = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%' + calledNorm);
+      if (phoneEntry) {
+        const sp = db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id);
+        if (sp?.forward_number) inboundForward = sp.forward_number;
+      }
+    } catch(e) {}
+    console.log('[INBOUND CALL] From:', fromPhone, lead ? '(lead: '+lead.name+')' : '', '-> forward to:', inboundForward);
     return res.type('text/xml').send(twiml(
       say('Thank you for calling. Please hold while we connect you to our team.') +
-      '<Dial timeout="30">' + transferNumber + '</Dial>' +
+      '<Dial timeout="30">' + inboundForward + '</Dial>' +
       say('Sorry, no one is available right now. Please call back later.') +
       '<Hangup/>'
     ));
@@ -556,14 +566,40 @@ async function finishCalendarBooking(res, session, lead, email) {
 
 // â”€â”€â”€ RECORDING DONE (voicemail) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // --- INBOUND CALL HANDLER ---
-// Forward incoming calls to the transfer number
-// Set this as the LaML webhook for inbound voice on your SignalWire numbers
+// Forward incoming calls to the salesperson assigned to the called number
+// Falls back to global transfer number if no salesperson is assigned
 router.post('/inbound', (req, res) => {
-  const transferNumber = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
+  const calledNumber = req.body.To || ''; // the SignalWire number that was called
   const callerNumber = req.body.From || 'unknown';
   const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
-  console.log('[INBOUND CALL] From:', callerNumber, '-> forwarding to', transferNumber);
-  return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Please hold while we connect your call.</Say><Dial callerId="' + (req.body.To || '') + '" timeout="30" action="' + baseUrl + '/api/calls/inbound-status" method="POST">' + transferNumber + '</Dial><Say voice="alice">Sorry, no one is available. Please try again later.</Say></Response>');
+  const globalTransfer = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
+
+  // Look up which phone number was called, find assigned salesperson
+  let forwardTo = globalTransfer;
+  let forwardName = 'staff';
+  try {
+    // Normalize called number for lookup
+    const calledNorm = calledNumber.replace(/\D/g, '').slice(-10);
+    const phoneEntry = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%' + calledNorm);
+    if (phoneEntry) {
+      // Find salesperson assigned to this phone number
+      const salesperson = db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id);
+      if (salesperson?.forward_number) {
+        forwardTo = salesperson.forward_number;
+        forwardName = salesperson.name;
+        console.log('[INBOUND] Called:', calledNumber, '-> routed to', salesperson.name, ':', forwardTo);
+      } else if (salesperson) {
+        console.log('[INBOUND] Called:', calledNumber, '-> salesperson', salesperson.name, 'has no forward number, using global');
+      } else {
+        console.log('[INBOUND] Called:', calledNumber, '-> no salesperson assigned, using global transfer');
+      }
+    }
+  } catch(e) {
+    console.error('[INBOUND] Lookup error:', e.message);
+  }
+
+  console.log('[INBOUND CALL] From:', callerNumber, '-> forwarding to', forwardTo, '(', forwardName, ')');
+  return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Please hold while we connect your call.</Say><Dial callerId="' + (req.body.To || '') + '" timeout="30" action="' + baseUrl + '/api/calls/inbound-status" method="POST">' + forwardTo + '</Dial><Say voice="alice">Sorry, no one is available. Please try again later.</Say></Response>');
 });
 
 // POST /api/calls/inbound-status -- called after dial completes

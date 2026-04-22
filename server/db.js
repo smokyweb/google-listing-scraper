@@ -187,6 +187,7 @@ try { db.exec("ALTER TABLE scrapes ADD COLUMN next_page_token TEXT"); } catch(e)
 try { db.exec("ALTER TABLE scrapes ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
 try { db.exec("ALTER TABLE scrapes ADD COLUMN created_by_name TEXT DEFAULT 'Admin'"); } catch(e) {}
 try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_access_token TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN forward_number TEXT"); } catch(e) {}
 try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_refresh_token TEXT"); } catch(e) {}
 try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_token_expiry INTEGER"); } catch(e) {}
 try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_email TEXT"); } catch(e) {}

@@ -54,7 +54,7 @@ export default function SalesUsers() {
   const [phoneNumbers, setPhoneNumbers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState(null);
-  const [form, setForm] = useState({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'' });
+  const [form, setForm] = useState({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -64,8 +64,8 @@ export default function SalesUsers() {
   };
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setEditUser(null); setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'' }); setShowAdd(true); };
-  const openEdit = (u) => { setEditUser(u); setForm({ name:u.name, email:u.email, password:'', states:JSON.parse(u.states||'[]'), cities:'', phone_number_id:u.phone_number_id||'' }); setShowAdd(true); };
+  const openAdd = () => { setEditUser(null); setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' }); setShowAdd(true); };
+  const openEdit = (u) => { setEditUser(u); setForm({ name:u.name, email:u.email, password:'', states:JSON.parse(u.states||'[]'), cities:'', phone_number_id:u.phone_number_id||'', forward_number:u.forward_number||'' }); setShowAdd(true); };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -112,6 +112,10 @@ export default function SalesUsers() {
                   <option value="">None (use default)</option>
                   {phoneNumbers.map(n=><option key={n.id} value={n.id}>{n.label} — {n.number}</option>)}
                 </select>
+              </div>
+              <div><label className="text-xs text-gray-400">Forward Incoming Calls To</label>
+                <input value={form.forward_number} onChange={e=>setForm({...form,forward_number:e.target.value})} placeholder="Salesperson's personal cell: (865) 555-1234" className={inp} />
+                <p className="text-xs text-gray-600 mt-0.5">Calls to their SignalWire number will forward here</p>
               </div>
               <div className="col-span-2"><label className="text-xs text-gray-400">Restricted to States (comma-separated codes, e.g. TX,CA,FL — leave blank for all)</label>
                 <input value={Array.isArray(form.states) ? form.states.join(',') : form.states} onChange={e=>setForm({...form,states:e.target.value})} placeholder="TX,CA,FL" className={inp} /></div>
