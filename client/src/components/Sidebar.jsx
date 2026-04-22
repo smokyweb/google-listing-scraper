@@ -1,27 +1,26 @@
-import { NavLink } from 'react-router-dom';
+﻿import { NavLink } from 'react-router-dom';
 import { clearToken } from '../api';
 
 const nav = [
-  { to: '/', label: 'Dashboard', icon: '📊' },
-  { to: '/reports', label: 'Reports', icon: '📊' },
-  { to: '/scraper', label: 'Scraper', icon: '🔍' },
-  { to: '/history', label: 'Scrape History', icon: '📜' },
-  { to: '/leads', label: 'Leads', icon: '👥' },
-  { to: '/import', label: 'Import Leads', icon: '📂' },
-  { to: '/email', label: 'Email Campaign', icon: '✉️' },
-  { to: '/email-senders', label: 'Email Senders', icon: '📧' },
-  { to: '/quick-email', label: 'Quick Email', icon: '✏️' },
-  { to: '/calls', label: 'Phone Calls', icon: '📞' },
-  { to: '/dialer', label: 'Dialer', icon: '☎️' },
-  { to: '/voice', label: 'Voice Message', icon: '🎙️' },
-  { to: '/callbacks', label: 'Call Backs', icon: '🔔' },
-  { to: '/voicemail-drop', label: 'Voicemail Drop', icon: '📩' },
-  { to: '/sms', label: 'SMS', icon: '💬' },
-  { to: '/sms-inbox', label: 'SMS Inbox', icon: '📨' },
-  { to: '/sales-users', label: 'Sales Users', icon: '👥' },
-  { to: '/phone-numbers', label: 'Phone Numbers', icon: '📱' },
-  { to: '/calendar', label: 'Calendar', icon: '📅' },
-  ...(isAdmin ? [{ to: '/settings', label: 'Settings', icon: '⚙️' }] : [{ to: '/my-profile', label: 'My Settings', icon: '⚙️' }]),
+  { to: '/', label: 'Dashboard', icon: 'ðŸ“Š' },
+  { to: '/reports', label: 'Reports', icon: 'ðŸ“Š' },
+  { to: '/scraper', label: 'Scraper', icon: 'ðŸ”' },
+  { to: '/history', label: 'Scrape History', icon: 'ðŸ“œ' },
+  { to: '/leads', label: 'Leads', icon: 'ðŸ‘¥' },
+  { to: '/import', label: 'Import Leads', icon: 'ðŸ“‚' },
+  { to: '/email', label: 'Email Campaign', icon: 'âœ‰ï¸' },
+  { to: '/email-senders', label: 'Email Senders', icon: 'ðŸ“§' },
+  { to: '/quick-email', label: 'Quick Email', icon: 'âœï¸' },
+  { to: '/calls', label: 'Phone Calls', icon: 'ðŸ“ž' },
+  { to: '/dialer', label: 'Dialer', icon: 'â˜Žï¸' },
+  { to: '/voice', label: 'Voice Message', icon: 'ðŸŽ™ï¸' },
+  { to: '/callbacks', label: 'Call Backs', icon: 'ðŸ””' },
+  { to: '/voicemail-drop', label: 'Voicemail Drop', icon: 'ðŸ“©' },
+  { to: '/sms', label: 'SMS', icon: 'ðŸ’¬' },
+  { to: '/sms-inbox', label: 'SMS Inbox', icon: 'ðŸ“¨' },
+  { to: '/sales-users', label: 'Sales Users', icon: 'ðŸ‘¥' },
+  { to: '/phone-numbers', label: 'Phone Numbers', icon: 'ðŸ“±' },
+  { to: '/calendar', label: 'Calendar', icon: 'ðŸ“…' },
 ];
 
 export default function Sidebar() {
@@ -64,6 +63,10 @@ export default function Sidebar() {
             <span>{item.label}</span>
           </NavLink>
         ))}
+        <NavLink to={isAdmin ? '/settings' : '/my-profile'} className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${isActive ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-white'}`}>
+          <span>⚙️</span>
+          <span>{isAdmin ? 'Settings' : 'My Settings'}</span>
+        </NavLink>
       </nav>
       <div className="p-4 border-t border-gray-800">
         <button
@@ -76,3 +79,5 @@ export default function Sidebar() {
     </aside>
   );
 }
+
+

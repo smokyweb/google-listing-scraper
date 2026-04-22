@@ -26,6 +26,11 @@ import QuickEmail from './pages/QuickEmail';
 import Reports from './pages/Reports';
 import MyProfile from './pages/MyProfile';
 
+function SettingsOrProfile() {
+  const role = localStorage.getItem('gls_role') || 'admin';
+  return role === 'salesperson' ? <MyProfile /> : <Settings />;
+}
+
 function Layout({ children }) {
   return (
     <div className="flex min-h-screen">
@@ -79,7 +84,7 @@ export default function App() {
       <Route path="/my-profile" element={<Layout><MyProfile /></Layout>} />
       <Route path="/phone-numbers" element={<Layout><PhoneNumbers /></Layout>} />
       <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
-      <Route path="/settings" element={<Layout>{localStorage.getItem('gls_role') === 'salesperson' ? <MyProfile /> : <Settings />}</Layout>} />
+      <Route path="/settings" element={<Layout><SettingsOrProfile /></Layout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
