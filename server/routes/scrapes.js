@@ -20,21 +20,14 @@ router.get('/', authMiddleware, (req, res) => {
     params = [parseInt(filterUser)];
   }
 
-  const { sortBy = 'created_at', sortDir = 'desc' } = req.query;
-  const allowedSort = ['created_at', 'name', 'created_by_name', 'lead_count'];
-  const sortColumn = allowedSort.includes(sortBy) ? "s.\" : 's.created_at';
-  const sortDirection = sortDir === 'asc' ? 'ASC' : 'DESC';
+  const rawSort = req.query.sortBy || 'created_at';
+  const rawDir = req.query.sortDir || 'desc';
+  const allowedSort = { created_at: 's.created_at', name: 's.name', created_by_name: 's.created_by_name', lead_count: 'lead_count' };
+  const orderCol = allowedSort[rawSort] || 's.created_at';
+  const orderDir = rawDir === 'asc' ? 'ASC' : 'DESC';
 
-    const scrapes = db.prepare(`
-    SELECT s.*,
-      COUNT(l.id) as lead_count,
-      SUM(CASE WHEN l.email != '' AND l.email IS NOT NULL THEN 1 ELSE 0 END) as emails_found
-    FROM scrapes s
-    LEFT JOIN leads l ON l.scrape_id = s.id
-    ${where}
-    GROUP BY s.id
-    ORDER BY s.\${sortColumn} \${sortDirection}
-  `).all(...params);
+  const sql = `SELECT s.*, COUNT(l.id) as lead_count, SUM(CASE WHEN l.email != '' AND l.email IS NOT NULL THEN 1 ELSE 0 END) as emails_found FROM scrapes s LEFT JOIN leads l ON l.scrape_id = s.id ${where} GROUP BY s.id ORDER BY ${orderCol} ${orderDir}`;
+  const scrapes = db.prepare(sql).all(...params);
   res.json(scrapes);
 });
 
