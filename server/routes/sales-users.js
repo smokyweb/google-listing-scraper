@@ -12,7 +12,7 @@ router.get('/', authMiddleware, (req, res) => {
     SELECT u.*, pn.number as phone_number_label
     FROM sales_users u
     LEFT JOIN phone_numbers pn ON pn.id = u.phone_number_id
-    ORDER BY u.created_at DESC
+    ORDER BY u.id ASC
   `).all().map(u => ({ ...u, password_hash: undefined }));
   res.json(users);
 });
