@@ -65,7 +65,25 @@ export default function SalesUsers() {
   useEffect(() => { load(); }, []);
 
   const openAdd = () => { setEditUser(null); setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' }); setShowAdd(true); };
-  const openEdit = (u) => { setEditUser(u); setForm({ name:u.name, email:u.email, password:'', states:JSON.parse(u.states||'[]'), cities:'', phone_number_id:u.phone_number_id||'', forward_number:u.forward_number||'' }); setShowAdd(true); };
+  const openEdit = (u) => {
+    setShowAdd(false); // force unmount/remount
+    setEditUser(null);
+    setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' });
+    // Small delay to ensure state resets before loading new user
+    setTimeout(() => {
+      setEditUser(u);
+      setForm({
+        name: u.name || '',
+        email: u.email || '',
+        password: '',
+        states: JSON.parse(u.states || '[]'),
+        cities: '',
+        phone_number_id: u.phone_number_id ? String(u.phone_number_id) : '',
+        forward_number: u.forward_number || '',
+      });
+      setShowAdd(true);
+    }, 50);
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
