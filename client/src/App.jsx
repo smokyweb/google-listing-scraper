@@ -24,6 +24,7 @@ import Dialer from './pages/Dialer';
 import EmailSenders from './pages/EmailSenders';
 import QuickEmail from './pages/QuickEmail';
 import Reports from './pages/Reports';
+import MyProfile from './pages/MyProfile';
 
 function Layout({ children }) {
   return (
@@ -75,9 +76,10 @@ export default function App() {
       <Route path="/email-senders" element={<Layout><EmailSenders /></Layout>} />
       <Route path="/quick-email" element={<Layout><QuickEmail /></Layout>} />
       <Route path="/reports" element={<Layout><Reports /></Layout>} />
+      <Route path="/my-profile" element={<Layout><MyProfile /></Layout>} />
       <Route path="/phone-numbers" element={<Layout><PhoneNumbers /></Layout>} />
       <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
-      <Route path="/settings" element={<Layout><Settings /></Layout>} />
+      <Route path="/settings" element={<Layout>{localStorage.getItem('gls_role') === 'salesperson' ? <MyProfile /> : <Settings />}</Layout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -21,7 +21,7 @@ const nav = [
   { to: '/sales-users', label: 'Sales Users', icon: '👥' },
   { to: '/phone-numbers', label: 'Phone Numbers', icon: '📱' },
   { to: '/calendar', label: 'Calendar', icon: '📅' },
-  { to: '/settings', label: 'Settings', icon: '⚙️' },
+  ...(isAdmin ? [{ to: '/settings', label: 'Settings', icon: '⚙️' }] : [{ to: '/my-profile', label: 'My Settings', icon: '⚙️' }]),
 ];
 
 export default function Sidebar() {
