@@ -8,6 +8,8 @@ export default function ScrapeHistory() {
   const [salesUsers, setSalesUsers] = useState([]);
   const [filterUser, setFilterUser] = useState('');
   const navigate = useNavigate();
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortDir, setSortDir] = useState('desc');
   const role = localStorage.getItem('gls_role') || 'admin';
   const isAdmin = role === 'admin';
 
@@ -19,7 +21,7 @@ export default function ScrapeHistory() {
   };
 
   useEffect(() => {
-    load('');
+    load('', 'created_at', 'desc');
     if (isAdmin) apiFetch('/sales-users').then(setSalesUsers).catch(() => {});
   }, []);
 
@@ -34,6 +36,18 @@ export default function ScrapeHistory() {
     window.open(`/api/scrapes/${id}/export?token=${token}`, '_blank');
   };
 
+
+  const handleSort = (col) => {
+    const newDir = sortBy === col && sortDir === 'desc' ? 'asc' : 'desc';
+    setSortBy(col); setSortDir(newDir); setLoading(true);
+    load(filterUser, col, newDir);
+  };
+  const SortHeader = ({ col, label }) => (
+    <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase cursor-pointer hover:text-white select-none"
+      onClick={() => handleSort(col)}>
+      {label} {sortBy === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+    </th>
+  );
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -41,7 +55,7 @@ export default function ScrapeHistory() {
         {isAdmin && salesUsers.length > 0 && (
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-400">Filter by user:</label>
-            <select value={filterUser} onChange={e => { setFilterUser(e.target.value); setLoading(true); load(e.target.value); }}
+            <select value={filterUser} onChange={e => { setFilterUser(e.target.value); setLoading(true); load(e.target.value, sortBy, sortDir); }}
               className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
               <option value="">All users</option>
               {salesUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -61,10 +75,10 @@ export default function ScrapeHistory() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-800">
-                <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Scrape Name</th>
-                <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Date</th>
+                <SortHeader col="name" label="Scrape Name" />
+                <SortHeader col="created_at" label="Date" />
               {isAdmin && <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">By</th>}
-                <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Leads</th>
+                <SortHeader col="lead_count" label="Leads" />
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Emails Found</th>
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Actions</th>
               </tr>
@@ -124,4 +138,6 @@ export default function ScrapeHistory() {
     </div>
   );
 }
+
+
 

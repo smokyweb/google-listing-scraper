@@ -1,8 +1,8 @@
-const router = require('express').Router();
+﻿const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
-// GET all scrapes (history) — salespersons only see their own
+// GET all scrapes (history) â€” salespersons only see their own
 router.get('/', authMiddleware, (req, res) => {
   const { filterUser } = req.query; // admin can pass ?filterUser=userId to filter
   const isSalesperson = req.user?.role === 'salesperson';
@@ -20,7 +20,12 @@ router.get('/', authMiddleware, (req, res) => {
     params = [parseInt(filterUser)];
   }
 
-  const scrapes = db.prepare(`
+  const { sortBy = 'created_at', sortDir = 'desc' } = req.query;
+  const allowedSort = ['created_at', 'name', 'created_by_name', 'lead_count'];
+  const sortColumn = allowedSort.includes(sortBy) ? "s.\" : 's.created_at';
+  const sortDirection = sortDir === 'asc' ? 'ASC' : 'DESC';
+
+    const scrapes = db.prepare(`
     SELECT s.*,
       COUNT(l.id) as lead_count,
       SUM(CASE WHEN l.email != '' AND l.email IS NOT NULL THEN 1 ELSE 0 END) as emails_found
@@ -28,7 +33,7 @@ router.get('/', authMiddleware, (req, res) => {
     LEFT JOIN leads l ON l.scrape_id = s.id
     ${where}
     GROUP BY s.id
-    ORDER BY s.created_at DESC
+    ORDER BY s.\${sortColumn} \${sortDirection}
   `).all(...params);
   res.json(scrapes);
 });
@@ -75,3 +80,4 @@ router.delete('/:id', authMiddleware, (req, res) => {
 });
 
 module.exports = router;
+
