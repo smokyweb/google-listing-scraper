@@ -258,7 +258,7 @@ router.post('/trigger', authMiddleware, async (req, res) => {
     const activeScript = db.prepare('SELECT * FROM voice_scripts WHERE is_active = 1 LIMIT 1').get();
     const callScript = script || activeScript?.script || 'Hello {company_name}, this is a business outreach call.';
     const swConfig = getSignalWireConfig();
-    const transferNumber = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
+    const transferNumber = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
     const fromNumber = resolvePhoneNumber(phoneNumberId, swConfig.phoneNumber);
     const isMock = !swConfig.projectId || !swConfig.token;
     const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
@@ -352,7 +352,7 @@ router.post('/ivr-handler', async (req, res) => {
   const callSid = req.body.CallSid || 'unknown';
   const fromPhone = req.body.To || req.body.From || '';
   const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
-  const transferNumber = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
+  const transferNumber = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
 
 
   // If no digit pressed, this is a fresh inbound call — forward to salesperson or global transfer
@@ -572,7 +572,7 @@ router.post('/inbound', (req, res) => {
   const calledNumber = req.body.To || ''; // the SignalWire number that was called
   const callerNumber = req.body.From || 'unknown';
   const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
-  const globalTransfer = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
+  const globalTransfer = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
 
   // Look up which phone number was called, find assigned salesperson
   let forwardTo = globalTransfer;
@@ -645,6 +645,7 @@ router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
 
 
 
