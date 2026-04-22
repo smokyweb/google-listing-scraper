@@ -14,7 +14,7 @@ const SECTIONS = [
       { key: 'signalwire_project_id', label: 'Project ID' },
       { key: 'signalwire_token', label: 'API Token', type: 'password' },
       { key: 'signalwire_space_url', label: 'Space URL', placeholder: 'example.signalwire.com' },
-      { key: 'transfer_phone_number', label: 'Transfer Phone Number', placeholder: '+15559876543' },
+      { key: 'transfer_phone_number', label: 'Transfer Phone Number (Admin fallback — overridden per salesperson in Sales Users)', placeholder: '+15559876543' },
     ],
   },
   {
