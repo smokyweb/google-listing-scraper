@@ -392,7 +392,18 @@ router.post('/ivr-handler', async (req, res) => {
 
   if (digit === '1') {
     logCall('transferred', '1');
-    return res.type('text/xml').send(twiml(`${say('Connecting you to a live staff member. Please hold.')} <Dial>${transferNumber}</Dial>`));
+    // Look up salesperson assigned to the outbound From number for per-salesperson transfer
+    let dialTo = transferNumber;
+    try {
+      const outboundFrom = req.body.From || '';
+      const fromNorm = outboundFrom.replace(/\D/g, '').slice(-10);
+      const phoneEntry = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%' + fromNorm);
+      if (phoneEntry) {
+        const sp = db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id);
+        if (sp?.forward_number) { dialTo = sp.forward_number; console.log('[IVR P1] Routing to salesperson', sp.name, ':', dialTo); }
+      }
+    } catch(e) {}
+    return res.type('text/xml').send(twiml(`${say('Connecting you to a live staff member. Please hold.')} <Dial>${dialTo}</Dial>`));
   }
   if (digit === '2') {
     return res.type('text/xml').send(twiml(`
