@@ -66,32 +66,30 @@ export default function SalesUsers() {
 
   const openAdd = () => { setEditUser(null); setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' }); setShowAdd(true); };
   const openEdit = (u) => {
-    setShowAdd(false); // force unmount/remount
-    setEditUser(null);
-    setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' });
-    // Small delay to ensure state resets before loading new user
-    setTimeout(() => {
-      setEditUser(u);
-      setForm({
-        name: u.name || '',
-        email: u.email || '',
-        password: '',
-        states: JSON.parse(u.states || '[]'),
-        cities: '',
-        phone_number_id: u.phone_number_id ? String(u.phone_number_id) : '',
-        forward_number: u.forward_number || '',
-      });
-      setShowAdd(true);
-    }, 50);
+    // Set both editUser and form atomically to avoid stale closure issues
+    setEditUser(u);
+    setForm({
+      name: u.name || '',
+      email: u.email || '',
+      password: '',
+      states: (() => { try { return JSON.parse(u.states || '[]'); } catch { return []; } })(),
+      cities: '',
+      phone_number_id: u.phone_number_id ? String(u.phone_number_id) : '',
+      forward_number: u.forward_number || '',
+    });
+    setShowAdd(true);
+    setMsg(null);
   };
 
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
+    // Capture the current editUser.id synchronously at save time
+    const saveUserId = editUser ? editUser.id : null;
     try {
       const body = { ...form, states: typeof form.states === 'string' ? form.states.split(',').map(s=>s.trim()).filter(Boolean) : form.states };
       if (!body.password) delete body.password;
-      if (editUser) await apiFetch(`/sales-users/${editUser.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+      if (saveUserId) await apiFetch(`/sales-users/${saveUserId}`, { method: 'PATCH', body: JSON.stringify(body) });
       else await apiFetch('/sales-users', { method: 'POST', body: JSON.stringify(body) });
       setMsg({ type: 'success', text: editUser ? 'User updated' : 'User added' });
       setShowAdd(false);
