@@ -35,6 +35,13 @@ router.patch('/:id', authMiddleware, (req, res) => {
   const existing = db.prepare('SELECT * FROM sales_users WHERE id=?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
   const pwHash = password ? hashPassword(password) : existing.password_hash;
+  // Validate phone_number_id exists (may have been deleted during sync)
+  let validPhoneId = phone_number_id ?? existing.phone_number_id;
+  if (validPhoneId) {
+    const phoneExists = db.prepare('SELECT id FROM phone_numbers WHERE id = ?').get(validPhoneId);
+    if (!phoneExists) validPhoneId = null;
+  }
+
   db.prepare('UPDATE sales_users SET name=?, email=?, password_hash=?, states=?, cities=?, phone_number_id=?, is_active=? WHERE id=?')
     .run(
       name ?? existing.name,
@@ -42,7 +49,7 @@ router.patch('/:id', authMiddleware, (req, res) => {
       pwHash,
       states ? JSON.stringify(states) : existing.states,
       cities ? JSON.stringify(cities) : existing.cities,
-      phone_number_id ?? existing.phone_number_id,
+      validPhoneId,
       is_active ?? existing.is_active,
       req.params.id
     );
