@@ -2,17 +2,34 @@ const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
-// GET all scrapes (history)
+// GET all scrapes (history) — salespersons only see their own
 router.get('/', authMiddleware, (req, res) => {
+  const { filterUser } = req.query; // admin can pass ?filterUser=userId to filter
+  const isSalesperson = req.user?.role === 'salesperson';
+  const userId = req.user?.userId;
+
+  let where = '';
+  let params = [];
+  if (isSalesperson && userId) {
+    // Salesperson: only their scrapes
+    where = 'WHERE s.created_by_user_id = ?';
+    params = [userId];
+  } else if (filterUser) {
+    // Admin filtering by specific user
+    where = 'WHERE s.created_by_user_id = ?';
+    params = [parseInt(filterUser)];
+  }
+
   const scrapes = db.prepare(`
     SELECT s.*,
       COUNT(l.id) as lead_count,
       SUM(CASE WHEN l.email != '' AND l.email IS NOT NULL THEN 1 ELSE 0 END) as emails_found
     FROM scrapes s
     LEFT JOIN leads l ON l.scrape_id = s.id
+    ${where}
     GROUP BY s.id
     ORDER BY s.created_at DESC
-  `).all();
+  `).all(...params);
   res.json(scrapes);
 });
 

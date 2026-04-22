@@ -1,19 +1,27 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api';
 
 export default function ScrapeHistory() {
   const [scrapes, setScrapes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [salesUsers, setSalesUsers] = useState([]);
+  const [filterUser, setFilterUser] = useState('');
   const navigate = useNavigate();
+  const role = localStorage.getItem('gls_role') || 'admin';
+  const isAdmin = role === 'admin';
 
-  const load = () => {
-    apiFetch('/scrapes')
+  const load = (userId) => {
+    const query = userId ? `?filterUser=${userId}` : '';
+    apiFetch(`/scrapes${query}`)
       .then(data => { setScrapes(data); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load('');
+    if (isAdmin) apiFetch('/sales-users').then(setSalesUsers).catch(() => {});
+  }, []);
 
   const handleDelete = async (id, name) => {
     if (!window.confirm(`Delete scrape "${name}" and all its leads?`)) return;
@@ -28,7 +36,19 @@ export default function ScrapeHistory() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-6">Scrape History</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-white">Scrape History</h2>
+        {isAdmin && salesUsers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-400">Filter by user:</label>
+            <select value={filterUser} onChange={e => { setFilterUser(e.target.value); setLoading(true); load(e.target.value); }}
+              className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value="">All users</option>
+              {salesUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <div className="text-gray-500 p-8 text-center">Loading...</div>
@@ -43,6 +63,7 @@ export default function ScrapeHistory() {
               <tr className="border-b border-gray-800">
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Scrape Name</th>
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Date</th>
+              {isAdmin && <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">By</th>}
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Leads</th>
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Emails Found</th>
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Actions</th>
@@ -63,6 +84,7 @@ export default function ScrapeHistory() {
                   <td className="px-6 py-4 text-gray-400 text-sm">
                     {new Date(s.created_at).toLocaleString()}
                   </td>
+                  {isAdmin && <td className="px-6 py-4 text-xs text-gray-500">{s.created_by_name || 'Admin'}</td>}
                   <td className="px-6 py-4">
                     <span className="text-white font-semibold">{s.lead_count}</span>
                   </td>
@@ -102,3 +124,4 @@ export default function ScrapeHistory() {
     </div>
   );
 }
+

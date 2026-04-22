@@ -162,11 +162,13 @@ router.post('/', authMiddleware, async (req, res) => {
     // Save next_page_token if available for "Scrape More"
     const nextPageToken = scrapeGooglePlaces._lastPageToken || null;
 
-    // Create scrape record
+    // Create scrape record with user info
     const scrapeName = `${keyword} - ${city}, ${state}`;
+    const createdByUserId = req.user?.userId || null;
+    const createdByName = req.user?.name || 'Admin';
     const scrapeRecord = db.prepare(
-      'INSERT INTO scrapes (name, keyword, city, state, lead_count, mock, next_page_token) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(scrapeName, keyword, city, state, withEmails.length, isMock ? 1 : 0, nextPageToken);
+      'INSERT INTO scrapes (name, keyword, city, state, lead_count, mock, next_page_token, created_by_user_id, created_by_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(scrapeName, keyword, city, state, withEmails.length, isMock ? 1 : 0, nextPageToken, createdByUserId, createdByName);
     const scrapeId = scrapeRecord.lastInsertRowid;
 
     // Insert leads with scrape_id
