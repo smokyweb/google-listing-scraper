@@ -2,6 +2,20 @@ const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
+// GET /api/phone-numbers/my — returns the current user's assigned phone number
+router.get('/my', authMiddleware, (req, res) => {
+  if (req.user?.role === 'salesperson' && req.user?.userId) {
+    const user = db.prepare('SELECT * FROM sales_users WHERE id = ?').get(req.user.userId);
+    if (user?.phone_number_id) {
+      const num = db.prepare('SELECT * FROM phone_numbers WHERE id = ?').get(user.phone_number_id);
+      return res.json(num || null);
+    }
+  }
+  // Admin or no assigned number: return default
+  const def = db.prepare('SELECT * FROM phone_numbers WHERE is_default = 1 LIMIT 1').get();
+  res.json(def || null);
+});
+
 // GET all phone numbers
 router.get('/', authMiddleware, (req, res) => {
   const numbers = db.prepare('SELECT * FROM phone_numbers ORDER BY is_default DESC, created_at ASC').all();
@@ -87,7 +101,7 @@ router.post('/:id/set-default', authMiddleware, (req, res) => {
   res.json({ success: true });
 });
 
-// GET /api/phone-numbers/sync — pull all numbers from SignalWire and import new ones
+// GET /api/phone-numbers/sync — pull all numbers from SignalWire, add new ones, remove deleted ones
 router.post('/sync', authMiddleware, async (req, res) => {
   try {
     const projectId = process.env.SIGNALWIRE_PROJECT_ID || db.prepare("SELECT value FROM settings WHERE key='signalwire_project_id'").get()?.value;
@@ -102,8 +116,10 @@ router.post('/sync', authMiddleware, async (req, res) => {
     if (!resp.ok) throw new Error(`SignalWire API error: ${resp.status}`);
     const data = await resp.json();
     const swNumbers = data.incoming_phone_numbers || [];
+    const swNumberSet = new Set(swNumbers.map(n => n.phone_number));
 
-    let added = 0, skipped = 0;
+    // Add new numbers from SignalWire
+    let added = 0, skipped = 0, removed = 0;
     const upsert = db.prepare('INSERT OR IGNORE INTO phone_numbers (label, number, provider) VALUES (?, ?, ?)');
     for (const num of swNumbers) {
       const e164 = num.phone_number;
@@ -111,7 +127,19 @@ router.post('/sync', authMiddleware, async (req, res) => {
       const r = upsert.run(label, e164, 'signalwire');
       if (r.changes > 0) added++; else skipped++;
     }
-    res.json({ synced: swNumbers.length, added, skipped });
+
+    // Remove numbers that are no longer in SignalWire (provider = signalwire only)
+    const localSwNumbers = db.prepare("SELECT id, number FROM phone_numbers WHERE provider = 'signalwire'").all();
+    for (const local of localSwNumbers) {
+      if (!swNumberSet.has(local.number)) {
+        // Clear any user assignments before deleting
+        db.prepare('UPDATE sales_users SET phone_number_id = NULL WHERE phone_number_id = ?').run(local.id);
+        db.prepare('DELETE FROM phone_numbers WHERE id = ?').run(local.id);
+        removed++;
+      }
+    }
+
+    res.json({ synced: swNumbers.length, added, skipped, removed });
   } catch (err) {
     console.error('SignalWire sync error:', err.message);
     res.status(500).json({ error: err.message });

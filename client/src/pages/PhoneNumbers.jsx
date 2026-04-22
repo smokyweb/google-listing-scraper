@@ -14,7 +14,7 @@ export default function PhoneNumbers() {
     setSyncing(true);
     try {
       const data = await apiFetch('/phone-numbers/sync', { method: 'POST' });
-      setMessage({ type: 'success', text: `Synced from SignalWire: ${data.added} new number(s) added, ${data.skipped} already existed.` });
+      setMessage({ type: 'success', text: `Synced from SignalWire: ${data.added} added, ${data.skipped} unchanged${data.removed > 0 ? `, ${data.removed} removed` : ''}.` });
       load();
     } catch (err) {
       setMessage({ type: 'error', text: err.message });

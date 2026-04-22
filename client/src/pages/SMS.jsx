@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
 import AIScriptBox from '../components/AIScriptBox';
 
@@ -47,7 +47,8 @@ export default function SMS() {
   useEffect(() => {
     apiFetch('/leads?limit=2000').then(data => { const withPhone = data.leads.filter(l => l.phone); setAllLeads(withPhone); setLeads(withPhone); }).catch(console.error);
     apiFetch('/scrapes').then(setScrapes).catch(() => {});
-    apiFetch('/phone-numbers').then(data => { setPhoneNumbers(data); const def = data.find(n=>n.is_default); if(def) setSelectedPhoneId(String(def.id)); }).catch(console.error);
+    apiFetch('/phone-numbers').then(setPhoneNumbers).catch(console.error);
+    apiFetch('/phone-numbers/my').then(num => { if (num) setSelectedPhoneId(String(num.id)); }).catch(console.error);
     loadTemplates();
   }, []);
 
@@ -110,7 +111,7 @@ export default function SMS() {
             <div className="flex items-center gap-2">
               <select value={selectedTemplateId} onChange={e => handleTemplateSelect(e.target.value)}
                 className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
-                <option value="">— Select saved template —</option>
+                <option value="">â€” Select saved template â€”</option>
                 {templates.map(t => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
               </select>
               {selectedTemplateId && <button onClick={handleDeleteTemplate} className="text-xs text-red-400 hover:text-red-300 whitespace-nowrap">Delete</button>}
@@ -129,7 +130,7 @@ export default function SMS() {
               <label className="block text-xs text-gray-400 mb-1">Sending From</label>
               <select value={selectedPhoneId} onChange={e => setSelectedPhoneId(e.target.value)} className={inp}>
                 <option value="">Use default number</option>
-                {phoneNumbers.map(n => <option key={n.id} value={String(n.id)}>{n.label} — {n.number}{n.is_default ? ' (default)' : ''}</option>)}
+                {phoneNumbers.map(n => <option key={n.id} value={String(n.id)}>{n.label} â€” {n.number}{n.is_default ? ' (default)' : ''}</option>)}
               </select>
             </div>
           )}
@@ -162,7 +163,7 @@ export default function SMS() {
 
           {result && (
             <div className={`p-4 rounded-lg text-sm ${result.error ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>
-              {result.error || `✅ Sent ${result.sent} of ${result.total} SMS${result.mock ? ' (mock mode)' : ''}`}
+              {result.error || `âœ… Sent ${result.sent} of ${result.total} SMS${result.mock ? ' (mock mode)' : ''}`}
             </div>
           )}
         </div>
@@ -196,3 +197,5 @@ export default function SMS() {
     </div>
   );
 }
+
+

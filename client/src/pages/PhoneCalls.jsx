@@ -46,13 +46,9 @@ export default function PhoneCalls() {
       .then(data => { const w = data.leads.filter(l => l.phone); setAllLeads(w); setLeads(w); })
       .catch(console.error);
     apiFetch('/scrapes').then(setScrapes).catch(() => {});
-    apiFetch('/phone-numbers')
-      .then(data => {
-        setPhoneNumbers(data);
-        const def = data.find(n => n.is_default);
-        if (def) setSelectedPhoneId(String(def.id));
-      })
-      .catch(console.error);
+    apiFetch('/phone-numbers').then(setPhoneNumbers).catch(console.error);
+    // Auto-select user's assigned number (or default)
+    apiFetch('/phone-numbers/my').then(num => { if (num) setSelectedPhoneId(String(num.id)); }).catch(console.error);
     apiFetch('/voice-scripts')
       .then(data => {
         setVoiceScripts(data);
