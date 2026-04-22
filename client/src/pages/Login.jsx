@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { login, setToken } from '../api';
 
 async function salespersonLogin(email, password) {
@@ -92,7 +92,28 @@ export default function Login({ onLogin }) {
             <p className="text-xs text-gray-600 mt-3 text-center">Contact your admin if you need your login credentials.</p>
           </form>
         )}
+
+      <div className="mt-6 pt-4 border-t border-gray-800 text-center">
+        <button
+          onClick={async () => {
+            // Clear all caches and service workers
+            if ('serviceWorker' in navigator) {
+              const regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map(r => r.unregister()));
+            }
+            if ('caches' in window) {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(k => caches.delete(k)));
+            }
+            window.location.reload(true);
+          }}
+          className="text-xs text-gray-600 hover:text-gray-400 transition-colors underline"
+        >
+          🔄 Force reload (clear cache)
+        </button>
+      </div>
       </div>
     </div>
   );
 }
+
