@@ -37,6 +37,11 @@ export default function ScrapeHistory() {
   };
 
 
+
+  const assignScrape = async (scrapeId, userId, userName) => {
+    await apiFetch(`/scrapes/${scrapeId}/assign`, { method: 'PATCH', body: JSON.stringify({ userId, userName }) });
+    load(filterUser, sortBy, sortDir);
+  };
   const handleSort = (col) => {
     const newDir = sortBy === col && sortDir === 'desc' ? 'asc' : 'desc';
     setSortBy(col); setSortDir(newDir); setLoading(true);
@@ -98,7 +103,21 @@ export default function ScrapeHistory() {
                   <td className="px-6 py-4 text-gray-400 text-sm">
                     {new Date(s.created_at).toLocaleString()}
                   </td>
-                  {isAdmin && <td className="px-6 py-4 text-xs text-gray-500">{s.created_by_name || 'Admin'}</td>}
+                  {isAdmin && (
+                    <td className="px-6 py-4">
+                      <select
+                        value={s.created_by_user_id || ''}
+                        onChange={e => {
+                          const u = salesUsers.find(u => String(u.id) === e.target.value);
+                          assignScrape(s.id, u ? u.id : null, u ? u.name : 'Admin');
+                        }}
+                        className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-white focus:outline-none focus:border-blue-500 min-w-[100px]"
+                      >
+                        <option value="">Admin</option>
+                        {salesUsers.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                      </select>
+                    </td>
+                  )}
                   <td className="px-6 py-4">
                     <span className="text-white font-semibold">{s.lead_count}</span>
                   </td>
@@ -138,6 +157,8 @@ export default function ScrapeHistory() {
     </div>
   );
 }
+
+
 
 
 

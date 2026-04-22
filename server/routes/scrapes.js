@@ -64,6 +64,15 @@ router.get('/:id/export', authMiddleware, (req, res) => {
   res.send(csv);
 });
 
+
+// PATCH /api/scrapes/:id/assign - assign scrape to a user
+router.patch('/:id/assign', authMiddleware, (req, res) => {
+  const { userId, userName } = req.body;
+  const { id } = req.params;
+  db.prepare('UPDATE scrapes SET created_by_user_id = ?, created_by_name = ? WHERE id = ?')
+    .run(userId || null, userName || 'Admin', id);
+  res.json({ success: true });
+});
 // DELETE a scrape and its leads
 router.delete('/:id', authMiddleware, (req, res) => {
   const { id } = req.params;
@@ -73,4 +82,5 @@ router.delete('/:id', authMiddleware, (req, res) => {
 });
 
 module.exports = router;
+
 
