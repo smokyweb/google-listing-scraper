@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 
 const SECTIONS = [
@@ -14,7 +14,6 @@ const SECTIONS = [
       { key: 'signalwire_project_id', label: 'Project ID' },
       { key: 'signalwire_token', label: 'API Token', type: 'password' },
       { key: 'signalwire_space_url', label: 'Space URL', placeholder: 'example.signalwire.com' },
-      { key: 'signalwire_phone_number', label: 'Phone Number', placeholder: '+15551234567' },
       { key: 'transfer_phone_number', label: 'Transfer Phone Number', placeholder: '+15559876543' },
     ],
   },
@@ -160,3 +159,4 @@ JWT_SECRET=change-me`}</pre>
     </div>
   );
 }
+

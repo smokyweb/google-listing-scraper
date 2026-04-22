@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 
 export default function PhoneNumbers() {
@@ -77,7 +77,7 @@ export default function PhoneNumbers() {
         <div className="flex gap-2">
           <button onClick={handleSync} disabled={syncing}
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
-            {syncing ? 'Syncing...' : '🔄 Sync from SignalWire'}
+            {syncing ? 'Syncing...' : 'ðŸ”„ Sync from SignalWire'}
           </button>
           <button onClick={() => setShowAdd(!showAdd)}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors">
@@ -119,18 +119,7 @@ export default function PhoneNumbers() {
                   className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                 />
               </div>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Provider</label>
-                <select
-                  value={form.provider}
-                  onChange={e => setForm({ ...form, provider: e.target.value })}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="signalwire">SignalWire</option>
-                  <option value="twilio">Twilio</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
+
               <div className="flex items-center gap-3 pt-6">
                 <input
                   type="checkbox"
@@ -176,7 +165,7 @@ export default function PhoneNumbers() {
               <tr className="border-b border-gray-800">
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Label</th>
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Number</th>
-                <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Provider</th>
+                
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Default</th>
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Actions</th>
               </tr>
@@ -186,15 +175,11 @@ export default function PhoneNumbers() {
                 <tr key={num.id} className="hover:bg-gray-800/50 transition-colors">
                   <td className="px-6 py-4 text-white font-medium">{num.label}</td>
                   <td className="px-6 py-4 text-gray-300 font-mono">{num.number}</td>
-                  <td className="px-6 py-4">
-                    <span className="px-2 py-1 bg-blue-900/50 text-blue-300 rounded text-xs capitalize">
-                      {num.provider}
-                    </span>
-                  </td>
+
                   <td className="px-6 py-4">
                     {num.is_default ? (
                       <span className="px-2 py-1 bg-green-900/50 text-green-300 rounded text-xs font-medium">
-                        ✓ Default
+                        âœ“ Default
                       </span>
                     ) : (
                       <button
@@ -228,3 +213,5 @@ export default function PhoneNumbers() {
     </div>
   );
 }
+
+

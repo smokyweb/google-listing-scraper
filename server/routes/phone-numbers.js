@@ -11,14 +11,14 @@ router.get('/my', authMiddleware, (req, res) => {
       return res.json(num || null);
     }
   }
-  // Admin or no assigned number: return default
-  const def = db.prepare('SELECT * FROM phone_numbers WHERE is_default = 1 LIMIT 1').get();
+  // Admin or no assigned number: return SignalWire default
+  const def = db.prepare("SELECT * FROM phone_numbers WHERE is_default = 1 AND provider = 'signalwire' LIMIT 1").get();
   res.json(def || null);
 });
 
-// GET all phone numbers
+// GET all phone numbers (only SignalWire numbers)
 router.get('/', authMiddleware, (req, res) => {
-  const numbers = db.prepare('SELECT * FROM phone_numbers ORDER BY is_default DESC, created_at ASC').all();
+  const numbers = db.prepare("SELECT * FROM phone_numbers WHERE provider = 'signalwire' ORDER BY is_default DESC, created_at ASC").all();
   res.json(numbers);
 });
 
