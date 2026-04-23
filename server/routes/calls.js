@@ -83,9 +83,13 @@ function getIvrSession(callSid) {
   return session;
 }
 
-function updateIvrSession(callSid, step, data) {
+function updateIvrSession(callSid, step, newData) {
+  // Merge with existing data to preserve fields like fromNumber across IVR steps
+  const existing = db.prepare('SELECT data FROM ivr_sessions WHERE call_sid=?').get(callSid);
+  const existingData = existing ? (JSON.parse(existing.data || '{}')) : {};
+  const merged = { ...existingData, ...newData };
   db.prepare("UPDATE ivr_sessions SET step=?, data=?, updated_at=datetime('now') WHERE call_sid=?")
-    .run(step, JSON.stringify(data), callSid);
+    .run(step, JSON.stringify(merged), callSid);
 }
 
 function twiml(content) {
@@ -216,27 +220,29 @@ async function createCalendarEvent(lead, slotDate, email, salespersonId) {
   const companyName = lead?.name || '';
   const meetTitle = companyName ? `App Demo Meeting - ${companyName}` : 'App Demo Meeting';
   const greeting = companyName ? `Hello ${companyName},` : 'Hello,';
+  // Description will be updated after event creation with the real Meet link
   const meetDescription = `${greeting}
 
 Please accept this invite for our meeting to show you a demo of our app/software for your business.
 
 This is a Google Meet Web Conference.
 Please join the meeting here:
-(Google Meet link and dial-in details will appear below)
+%%MEET_LINK%%
 
 We look forward to meeting with you.
 
 Thanks!
 ${spName}${spPhone ? '\n' + spPhone : ''}`;
 
-  const event = await calendar.events.insert({
+  let eventResult = await calendar.events.insert({
     calendarId: 'primary',
     conferenceDataVersion: 1,
+    sendUpdates: 'all', // Send invite from the calendar owner (salesperson)
     requestBody: {
       summary: meetTitle,
-      description: meetDescription,
-      start: { dateTime: slotDate.toISOString() },
-      end: { dateTime: end.toISOString() },
+      description: meetDescription, // Will be updated with real Meet link after creation
+      start: { dateTime: slotDate.toISOString(), timeZone: 'America/New_York' },
+      end: { dateTime: end.toISOString(), timeZone: 'America/New_York' },
       attendees: email ? [{ email }] : [],
       conferenceData: {
         createRequest: { requestId: uuidv4(), conferenceSolutionKey: { type: 'hangoutsMeet' } },
@@ -244,7 +250,27 @@ ${spName}${spPhone ? '\n' + spPhone : ''}`;
       reminders: { useDefault: true },
     },
   });
-  return event.data;
+  const eventData = eventResult.data;
+
+  // Now update the description with the real Google Meet link
+  const meetLink = eventData.hangoutLink || eventData.conferenceData?.entryPoints?.[0]?.uri || '';
+  if (meetLink && meetDescription.includes('%%MEET_LINK%%')) {
+    const dialInfo = eventData.conferenceData?.entryPoints?.find(e => e.entryPointType === 'phone');
+    const dialText = dialInfo ? `\nDial in: ${dialInfo.uri}\nPIN: ${dialInfo.pin || ''}` : '';
+    const updatedDesc = meetDescription.replace('%%MEET_LINK%%', `${meetLink}${dialText}`);
+    try {
+      await calendar.events.patch({
+        calendarId: 'primary',
+        eventId: eventData.id,
+        requestBody: { description: updatedDesc },
+      });
+      eventData.description = updatedDesc;
+    } catch(patchErr) {
+      console.error('Failed to update description with Meet link:', patchErr.message);
+    }
+  }
+
+  return eventData;
 }
 
 function formatSlotLabel(slot) {
@@ -441,7 +467,7 @@ router.post('/ivr-handler', async (req, res) => {
   }
   if (digit === '3') {
     logCall('meeting_scheduled', '3');
-    if (callSid !== 'unknown') updateIvrSession(callSid, 'calendar_ask_day', {});
+    if (callSid !== 'unknown') updateIvrSession(callSid, 'calendar_ask_day', { fromNumber: req.body.From || '' });
     return res.type('text/xml').send(twiml(`
       <Gather input="speech" action="${baseUrl}/api/calls/ivr-calendar-day" method="POST" language="en-US" timeout="10">
         ${say('What day would you like to schedule a virtual meeting? Please say a date like Monday or April twenty first.')}
@@ -588,11 +614,25 @@ router.post('/ivr-calendar-email-new', async (req, res) => {
 
 async function finishCalendarBooking(res, session, lead, email) {
   const selectedSlot = session.dataObj.selectedSlot ? new Date(session.dataObj.selectedSlot) : null;
+  // Look up salesperson from the number that made the outbound call
+  let salespersonId = null;
+  try {
+    const calledFrom = session.lead_phone ? '' : ''; // outbound from number stored in session data
+    const fromNum = session.dataObj?.fromNumber || '';
+    if (fromNum) {
+      const last10 = fromNum.replace(/\D/g,'').slice(-10);
+      const pn = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%'+last10);
+      if (pn) {
+        const sp = db.prepare('SELECT id FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(pn.id);
+        if (sp) salespersonId = sp.id;
+      }
+    }
+  } catch(e) {}
   if (!selectedSlot) {
     return res.type('text/xml').send(twiml(`${say('Something went wrong. Please call back to schedule your meeting. Goodbye.')} <Hangup/>`));
   }
   try {
-    const event = await createCalendarEvent(lead || { name: session.lead_phone, phone: session.lead_phone, city: '', state: '', keyword: '' }, selectedSlot, email);
+    const event = await createCalendarEvent(lead || { name: session.lead_phone, phone: session.lead_phone, city: '', state: '', keyword: '' }, selectedSlot, email, salespersonId);
     const meetLink = event?.hangoutLink || event?.conferenceData?.entryPoints?.[0]?.uri || '';
     const confirmation = `Your meeting has been scheduled for ${formatSlotLabel(selectedSlot)}. ${email ? `A Google Meet link has been sent to ${email}.` : 'Check your calendar for the Google Meet link.'} Goodbye.`;
     return res.type('text/xml').send(twiml(`${say(confirmation)} <Hangup/>`));
