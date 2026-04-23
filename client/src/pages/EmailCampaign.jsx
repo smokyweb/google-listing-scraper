@@ -57,7 +57,19 @@ export default function EmailCampaign() {
     apiFetch('/leads?limit=2000').then(data => { const w = data.leads.filter(l => l.email); setAllLeads(w); setLeads(w); }).catch(console.error);
     apiFetch('/scrapes').then(setScrapes).catch(() => {});
     loadTemplates();
-    apiFetch('/email-senders').then(data => { setSenders(data); const def=data.find(s=>s.is_default); if(def) setSelectedSenderId(String(def.id)); }).catch(()=>{});
+    apiFetch('/email-senders').then(data => {
+      setSenders(data);
+      const role = localStorage.getItem('gls_role') || 'admin';
+      const user = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
+      if (role === 'salesperson' && user?.email) {
+        // Auto-select salesperson's own email sender
+        const mySender = data.find(s => s.email === user.email);
+        if (mySender) setSelectedSenderId(String(mySender.id));
+      } else {
+        const def = data.find(s => s.is_default);
+        if (def) setSelectedSenderId(String(def.id));
+      }
+    }).catch(()=>{});
   }, []);
 
   const handleTemplateSelect = (id) => {
@@ -114,16 +126,25 @@ export default function EmailCampaign() {
           <p className="text-xs text-gray-500">Placeholders: {'{business_name}'} {'{city}'} {'{state}'} {'{keyword}'}</p>
 
           {/* From sender */}
-          {senders.length > 0 && (
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">From</label>
-              <select value={selectedSenderId} onChange={e=>setSelectedSenderId(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
-                <option value="">Use SMTP default</option>
-                {senders.map(s=><option key={s.id} value={String(s.id)}>{s.label} — {s.email}{s.is_default?' (default)':''}</option>)}
-              </select>
-            </div>
-          )}
+          {senders.length > 0 && (() => {
+            const role = localStorage.getItem('gls_role') || 'admin';
+            const user = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
+            const isSalesperson = role === 'salesperson';
+            const visibleSenders = isSalesperson && user?.email
+              ? senders.filter(s => s.email === user.email)
+              : senders;
+            return (
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">From {isSalesperson && <span className="text-gray-600">(your email)</span>}</label>
+                <select value={selectedSenderId} onChange={e => !isSalesperson && setSelectedSenderId(e.target.value)}
+                  disabled={isSalesperson}
+                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500 disabled:opacity-70">
+                  <option value="">Use SMTP default</option>
+                  {visibleSenders.map(s=><option key={s.id} value={String(s.id)}>{s.label} — {s.email}</option>)}
+                </select>
+              </div>
+            );
+          })()}
 
           {/* Template management */}
           <div className="bg-gray-800/60 rounded-lg p-4 space-y-3">

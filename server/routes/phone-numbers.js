@@ -16,8 +16,19 @@ router.get('/my', authMiddleware, (req, res) => {
   res.json(def || null);
 });
 
-// GET all phone numbers (only SignalWire numbers)
+// GET phone numbers - salesperson only sees their assigned number
 router.get('/', authMiddleware, (req, res) => {
+  const isSalesperson = req.user?.role === 'salesperson';
+  const userId = req.user?.userId;
+  if (isSalesperson && userId) {
+    const sp = db.prepare('SELECT phone_number_id FROM sales_users WHERE id = ?').get(userId);
+    if (sp?.phone_number_id) {
+      const num = db.prepare('SELECT * FROM phone_numbers WHERE id = ?').get(sp.phone_number_id);
+      return res.json(num ? [num] : []);
+    }
+    // No assigned number - return empty
+    return res.json([]);
+  }
   const numbers = db.prepare("SELECT * FROM phone_numbers WHERE provider = 'signalwire' ORDER BY is_default DESC, created_at ASC").all();
   res.json(numbers);
 });

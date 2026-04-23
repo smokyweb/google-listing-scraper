@@ -15,8 +15,15 @@ export default function QuickEmail() {
   useEffect(() => {
     apiFetch('/email-senders').then(data => {
       setSenders(data);
-      const def = data.find(s => s.is_default);
-      if (def) setSelectedSenderId(String(def.id));
+      const role = localStorage.getItem('gls_role') || 'admin';
+      const user = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
+      if (role === 'salesperson' && user?.email) {
+        const mine = data.find(s => s.email === user.email);
+        if (mine) setSelectedSenderId(String(mine.id));
+      } else {
+        const def = data.find(s => s.is_default);
+        if (def) setSelectedSenderId(String(def.id));
+      }
     }).catch(() => {});
   }, []);
 
@@ -44,15 +51,22 @@ export default function QuickEmail() {
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
           <h3 className="text-lg font-semibold text-white">Compose</h3>
 
-          {senders.length > 0 && (
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">From</label>
-              <select value={selectedSenderId} onChange={e => setSelectedSenderId(e.target.value)} className={inp}>
-                <option value="">Use SMTP default</option>
-                {senders.map(s => <option key={s.id} value={String(s.id)}>{s.label} — {s.email}{s.is_default?' (default)':''}</option>)}
-              </select>
-            </div>
-          )}
+          {senders.length > 0 && (() => {
+            const role = localStorage.getItem('gls_role') || 'admin';
+            const user = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
+            const isSalesperson = role === 'salesperson';
+            const visible = isSalesperson && user?.email ? senders.filter(s => s.email === user.email) : senders;
+            return (
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">From</label>
+                <select value={selectedSenderId} onChange={e => !isSalesperson && setSelectedSenderId(e.target.value)}
+                  disabled={isSalesperson} className={`${inp} disabled:opacity-70`}>
+                  <option value="">Use SMTP default</option>
+                  {visible.map(s => <option key={s.id} value={String(s.id)}>{s.label} — {s.email}</option>)}
+                </select>
+              </div>
+            );
+          })()}
 
           <div>
             <label className="block text-xs text-gray-400 mb-1">To (email address)</label>

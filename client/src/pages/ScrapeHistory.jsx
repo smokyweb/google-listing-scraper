@@ -1,4 +1,5 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { formatEST } from '../utils/time';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api';
 
@@ -104,7 +105,7 @@ export default function ScrapeHistory() {
                     {s.mock ? <span className="ml-2 px-1.5 py-0.5 bg-yellow-900/50 text-yellow-400 rounded text-xs">mock</span> : null}
                   </td>
                   <td className="px-6 py-4 text-gray-400 text-sm">
-                    {new Date(s.created_at).toLocaleString()}
+                    {formatEST(s.created_at)}
                   </td>
                   {isAdmin && (
                     <td className="px-6 py-4">
@@ -160,6 +161,7 @@ export default function ScrapeHistory() {
     </div>
   );
 }
+
 
 
 

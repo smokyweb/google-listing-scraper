@@ -1,3 +1,4 @@
+﻿import { formatEST } from '../utils/time';
 import { useState, useEffect, useRef } from 'react';
 import { apiFetch } from '../api';
 
@@ -84,7 +85,7 @@ export default function SMSInbox() {
               <div className="px-4 py-3 border-b border-gray-800 shrink-0">
                 <p className="text-white font-medium">{activeConv?.leadName || activePhone}</p>
                 <p className="text-xs text-gray-400">{activePhone}</p>
-                {activeConv?.unsubscribed ? <span className="text-xs text-red-400">⚠ Unsubscribed</span> : null}
+                {activeConv?.unsubscribed ? <span className="text-xs text-red-400">âš  Unsubscribed</span> : null}
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-2">
                 {activeMessages.map(m => (
@@ -92,7 +93,7 @@ export default function SMSInbox() {
                     <div className={`max-w-xs px-4 py-2 rounded-2xl text-sm ${m.direction === 'outbound' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-gray-700 text-gray-200 rounded-bl-none'}`}>
                       <p>{m.message}</p>
                       <p className={`text-xs mt-1 ${m.direction === 'outbound' ? 'text-blue-200' : 'text-gray-500'}`}>
-                        {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatEST(m.created_at)}
                       </p>
                     </div>
                   </div>
@@ -120,3 +121,4 @@ export default function SMSInbox() {
     </div>
   );
 }
+
