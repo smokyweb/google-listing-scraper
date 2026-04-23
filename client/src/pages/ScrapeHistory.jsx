@@ -13,9 +13,12 @@ export default function ScrapeHistory() {
   const role = localStorage.getItem('gls_role') || 'admin';
   const isAdmin = role === 'admin';
 
-  const load = (userId) => {
-    const query = userId ? `?filterUser=${userId}` : '';
-    apiFetch(`/scrapes${query}`)
+  const load = (userId, sb, sd) => {
+    const p = new URLSearchParams();
+    if (userId) p.set('filterUser', userId);
+    p.set('sortBy', sb || sortBy || 'created_at');
+    p.set('sortDir', sd || sortDir || 'desc');
+    apiFetch(`/scrapes?${p.toString()}`)
       .then(data => { setScrapes(data); setLoading(false); })
       .catch(() => setLoading(false));
   };
@@ -60,7 +63,7 @@ export default function ScrapeHistory() {
         {isAdmin && salesUsers.length > 0 && (
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-400">Filter by user:</label>
-            <select value={filterUser} onChange={e => { setFilterUser(e.target.value); setLoading(true); load(e.target.value, sortBy, sortDir); }}
+            <select value={filterUser} onChange={e => { const v=e.target.value; setFilterUser(v); setLoading(true); load(v, sortBy, sortDir); }}
               className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
               <option value="">All users</option>
               {salesUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
@@ -157,6 +160,7 @@ export default function ScrapeHistory() {
     </div>
   );
 }
+
 
 
 

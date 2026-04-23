@@ -1,4 +1,4 @@
-const router = require('express').Router();
+﻿const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -32,7 +32,7 @@ function findLeadByPhone(phone) {
 
 const UNSUB_WORDS = ['stop','unsubscribe','quit','cancel','end','optout','opt out','opt-out'];
 
-// ─── INCOMING SMS WEBHOOK (no auth — SignalWire) ───────────────────────────────
+// â”€â”€â”€ INCOMING SMS WEBHOOK (no auth â€” SignalWire) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/incoming', (req, res) => {
   const from = req.body.From || '';
   const to = req.body.To || '';
@@ -57,7 +57,7 @@ router.post('/incoming', (req, res) => {
   return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response/>');
 });
 
-// ─── SEND OUTBOUND SMS ─────────────────────────────────────────────────────────
+// â”€â”€â”€ SEND OUTBOUND SMS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/send', authMiddleware, async (req, res) => {
   try {
     const { message, leadIds, phoneNumberId } = req.body;
@@ -109,19 +109,26 @@ router.post('/send', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── SMS INBOX ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ SMS INBOX â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.get('/inbox', authMiddleware, (req, res) => {
-  const messages = db.prepare(`
-    SELECT m.*, l.name as lead_name, l.unsubscribed as lead_unsubscribed
-    FROM sms_inbox m
-    LEFT JOIN leads l ON l.id = m.lead_id
-    ORDER BY m.created_at DESC
-    LIMIT 500
-  `).all();
+  const isSalesperson = req.user?.role === 'salesperson';
+  const userId = req.user?.userId;
+  let where = '';
+  if (isSalesperson && userId) {
+    const sp = db.prepare('SELECT * FROM sales_users WHERE id = ?').get(userId);
+    if (sp?.phone_number_id) {
+      const pn = db.prepare('SELECT number FROM phone_numbers WHERE id = ?').get(sp.phone_number_id);
+      if (pn) {
+        const last10 = pn.number.replace(/\D/g,'').slice(-10);
+        where = `WHERE (replace(replace(replace(m.to_number,'+',''),'(',''),')','') LIKE '%${last10}' OR replace(replace(replace(m.from_number,'+',''),'(',''),')','') LIKE '%${last10}')`;
+      }
+    }
+  }
+  const messages = db.prepare(`SELECT m.*, l.name as lead_name, l.unsubscribed as lead_unsubscribed FROM sms_inbox m LEFT JOIN leads l ON l.id = m.lead_id ${where} ORDER BY m.created_at DESC LIMIT 500`).all();
   res.json(messages);
 });
 
-// ─── REPLY TO INCOMING SMS ─────────────────────────────────────────────────────
+// â”€â”€â”€ REPLY TO INCOMING SMS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/reply', authMiddleware, async (req, res) => {
   try {
     const { to, message, phoneNumberId } = req.body;
@@ -156,3 +163,4 @@ router.post('/reply', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+

@@ -202,12 +202,39 @@ async function createCalendarEvent(lead, slotDate, email, salespersonId) {
   const end = new Date(slotDate);
   end.setMinutes(end.getMinutes() + 30);
 
+  // Get salesperson info for meeting description
+  let spName = 'Sales Team';
+  let spPhone = '';
+  if (salespersonId) {
+    const sp = db.prepare('SELECT * FROM sales_users WHERE id = ?').get(salespersonId);
+    if (sp) {
+      spName = sp.name || spName;
+      spPhone = sp.forward_number || '';
+    }
+  }
+
+  const companyName = lead?.name || '';
+  const meetTitle = companyName ? `App Demo Meeting - ${companyName}` : 'App Demo Meeting';
+  const greeting = companyName ? `Hello ${companyName},` : 'Hello,';
+  const meetDescription = `${greeting}
+
+Please accept this invite for our meeting to show you a demo of our app/software for your business.
+
+This is a Google Meet Web Conference.
+Please join the meeting here:
+(Google Meet link and dial-in details will appear below)
+
+We look forward to meeting with you.
+
+Thanks!
+${spName}${spPhone ? '\n' + spPhone : ''}`;
+
   const event = await calendar.events.insert({
     calendarId: 'primary',
     conferenceDataVersion: 1,
     requestBody: {
-      summary: `Meeting with ${lead.name || lead.phone}`,
-      description: `Scheduled via phone call. Business: ${lead.name}, City: ${lead.city}, State: ${lead.state}`,
+      summary: meetTitle,
+      description: meetDescription,
       start: { dateTime: slotDate.toISOString() },
       end: { dateTime: end.toISOString() },
       attendees: email ? [{ email }] : [],

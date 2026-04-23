@@ -1,15 +1,22 @@
-const router = require('express').Router();
+﻿const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
 router.get('/', authMiddleware, (req, res) => {
   const { page = 1, limit = 50, keyword, city, state, search, scrape_id } = req.query;
+  const isSalesperson = req.user?.role === 'salesperson';
+  const userId = req.user?.userId;
   const offset = (page - 1) * limit;
 
   let where = [];
   let params = [];
 
   if (scrape_id) { where.push('scrape_id = ?'); params.push(Number(scrape_id)); }
+  // Salesperson only sees their own leads (from their scrapes)
+  if (isSalesperson && userId) {
+    where.push("(scrape_id IN (SELECT id FROM scrapes WHERE created_by_user_id = ?) OR (source = 'manual' AND id IN (SELECT id FROM leads WHERE scrape_id IS NULL)))");
+    params.push(userId);
+  }
   if (keyword) { where.push('keyword LIKE ?'); params.push(`%${keyword}%`); }
   if (city) { where.push('city LIKE ?'); params.push(`%${city}%`); }
   if (state) { where.push('state LIKE ?'); params.push(`%${state}%`); }
@@ -73,3 +80,4 @@ router.delete('/:id', authMiddleware, (req, res) => {
 });
 
 module.exports = router;
+

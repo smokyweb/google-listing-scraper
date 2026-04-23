@@ -20,7 +20,17 @@ export default function Scraper() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    apiFetch('/locations/states').then(setStates).catch(() => {});
+    apiFetch('/locations/states').then(allStates => {
+      // Filter states by user's assigned states if salesperson
+      const role = localStorage.getItem('gls_role') || 'admin';
+      const user = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
+      if (role === 'salesperson' && user?.states?.length > 0) {
+        // Only show states assigned to this salesperson
+        setStates(allStates.filter(s => user.states.includes(s.code)));
+      } else {
+        setStates(allStates);
+      }
+    }).catch(() => {});
     apiFetch('/scrapes').then(data => setRecentScrapes(data.slice(0, 5))).catch(() => {});
   }, []);
 

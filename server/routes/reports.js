@@ -1,4 +1,4 @@
-const router = require('express').Router();
+﻿const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -36,6 +36,8 @@ router.get('/call-outcomes', authMiddleware, (req, res) => {
   let where = [];
   let params = [];
   if (scrapeId) { where.push('cl.scrape_id = ?'); params.push(Number(scrapeId)); }
+  const isSp2 = req.user?.role === 'salesperson'; const spId2 = req.user?.userId;
+  if (isSp2 && spId2) { where.push('cl.lead_id IN (SELECT id FROM leads WHERE scrape_id IN (SELECT id FROM scrapes WHERE created_by_user_id = ?))'); params.push(spId2); }
   if (dateFrom) { where.push('cl.called_at >= ?'); params.push(dateFrom); }
   if (dateTo) { where.push('cl.called_at <= ?'); params.push(dateTo + 'T23:59:59'); }
 
@@ -82,3 +84,5 @@ router.get('/overview', authMiddleware, (req, res) => {
 });
 
 module.exports = router;
+
+
