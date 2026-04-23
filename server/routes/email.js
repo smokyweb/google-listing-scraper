@@ -44,15 +44,24 @@ router.post('/send', authMiddleware, async (req, res) => {
     if (!subject || !body) return res.status(400).json({ error: 'subject and body are required' });
 
     // Use selected sender or default sender from email_senders table
-    const { senderId } = req.body;
+    const { senderId, replyToEmail } = req.body;
     let smtpFrom = process.env.SMTP_FROM || getSetting('smtp_from') || 'noreply@example.com';
+    let replyTo = null;
     if (senderId) {
       const sender = db.prepare('SELECT * FROM email_senders WHERE id=?').get(senderId);
-      if (sender) smtpFrom = sender.name ? `${sender.name} <${sender.email}>` : sender.email;
+      if (sender) {
+        smtpFrom = sender.name ? `${sender.name} <${sender.email}>` : sender.email;
+        replyTo = sender.email; // replies go to the sender's email
+      }
     } else {
       const defSender = db.prepare('SELECT * FROM email_senders WHERE is_default=1 LIMIT 1').get();
-      if (defSender) smtpFrom = defSender.name ? `${defSender.name} <${defSender.email}>` : defSender.email;
+      if (defSender) {
+        smtpFrom = defSender.name ? `${defSender.name} <${defSender.email}>` : defSender.email;
+        replyTo = defSender.email;
+      }
     }
+    // Allow explicit reply-to override (for salesperson routing)
+    if (replyToEmail) replyTo = replyToEmail;
     const config = getSmtpConfig();
     const isMock = !config.host;
     const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
@@ -100,7 +109,7 @@ router.post('/send', authMiddleware, async (req, res) => {
         sentCount++;
       } else {
         try {
-          await transporter.sendMail({ from: smtpFrom, to: lead.email, subject: personalizedSubject, html: htmlWithTracking });
+          await transporter.sendMail({ from: smtpFrom, to: lead.email, subject: personalizedSubject, html: htmlWithTracking, ...(replyTo ? { replyTo } : {}) });
           updateLead.run(lead.id);
           sentCount++;
         } catch (err) {

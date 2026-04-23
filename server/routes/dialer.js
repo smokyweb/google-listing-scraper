@@ -147,7 +147,7 @@ router.post('/sms', authMiddleware, async (req, res) => {
 // Send a manual email to any address
 router.post('/email', authMiddleware, async (req, res) => {
   try {
-    const { toEmail, subject, body, senderId, leadId } = req.body;
+    const { toEmail, subject, body, senderId, leadId, replyToEmail } = req.body;
     if (!toEmail || !subject || !body) return res.status(400).json({ error: 'toEmail, subject, and body are required' });
 
     const smtpHost = process.env.SMTP_HOST || getSetting('smtp_host');
@@ -170,7 +170,7 @@ router.post('/email', authMiddleware, async (req, res) => {
 
     const nodemailer = require('nodemailer');
     const transporter = nodemailer.createTransport({ host: smtpHost, port: smtpPort, auth: { user: smtpUser, pass: smtpPass } });
-    await transporter.sendMail({ from: fromAddr, to: toEmail, subject, html: body });
+    await transporter.sendMail({ from: fromAddr, to: toEmail, subject, html: body, ...(replyToEmail ? { replyTo: replyToEmail } : {}) });
 
     if (leadId) db.prepare("UPDATE leads SET email_status='sent', email_sent_at=datetime('now') WHERE id=?").run(leadId);
     return res.json({ success: true });

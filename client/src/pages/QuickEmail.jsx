@@ -31,9 +31,12 @@ export default function QuickEmail() {
     if (!to || !subject || !body) return;
     setSending(true); setResult(null);
     try {
+      const role = localStorage.getItem('gls_role') || 'admin';
+      const user = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
+      const replyToEmail = (role === 'salesperson' && user?.email) ? user.email : undefined;
       const data = await apiFetch('/dialer/email', {
         method: 'POST',
-        body: JSON.stringify({ toEmail: to, subject, body, senderId: selectedSenderId || undefined }),
+        body: JSON.stringify({ toEmail: to, subject, body, senderId: selectedSenderId || undefined, replyToEmail }),
       });
       setResult({ ok: true, msg: data.mock ? `[Mock] Email would be sent to ${to}` : `✅ Email sent to ${to}` });
       setTo(''); setSubject(''); setBody('');

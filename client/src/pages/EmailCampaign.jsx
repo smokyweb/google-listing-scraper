@@ -106,7 +106,10 @@ export default function EmailCampaign() {
   const handleSend = async () => {
     setSending(true); setResult(null);
     try {
-      const data = await apiFetch('/email/send', { method:'POST', body: JSON.stringify({ subject, body, leadIds: selectedIds.size > 0 ? [...selectedIds] : undefined, senderId: selectedSenderId || undefined }) });
+      const role = localStorage.getItem('gls_role') || 'admin';
+      const user = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
+      const replyToEmail = (role === 'salesperson' && user?.email) ? user.email : undefined;
+      const data = await apiFetch('/email/send', { method:'POST', body: JSON.stringify({ subject, body, leadIds: selectedIds.size > 0 ? [...selectedIds] : undefined, senderId: selectedSenderId || undefined, replyToEmail }) });
       setResult(data);
     } catch(err) { setResult({ error: err.message }); }
     finally { setSending(false); }
