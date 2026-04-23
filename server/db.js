@@ -182,6 +182,9 @@ db.exec(`
 try { db.exec('ALTER TABLE leads ADD COLUMN scrape_id INTEGER REFERENCES scrapes(id)'); } catch(e) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN email_scraped INTEGER DEFAULT 0'); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN unsubscribed INTEGER DEFAULT 0"); } catch(e) {}
+try { db.exec("ALTER TABLE email_templates ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE sms_templates ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE voice_scripts ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN notes TEXT DEFAULT ''"); } catch(e) {}
 try { db.exec("ALTER TABLE scrapes ADD COLUMN next_page_token TEXT"); } catch(e) {}
 try { db.exec("ALTER TABLE scrapes ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
