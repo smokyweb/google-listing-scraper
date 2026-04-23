@@ -149,18 +149,18 @@ async function getAvailableSlots(date) {
   auth.setCredentials({ refresh_token: refreshToken });
   const calendar = google.calendar({ version: 'v3', auth });
 
-  // Build start/end as ET times (America/New_York)
-  // Use date-only string + time to avoid UTC offset issues
-  const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD in ET
-  // 9 AM ET and 5 PM ET as explicit timezone-aware strings
-  const startET = new Date(`${dateStr}T09:00:00-05:00`);
-  const endET = new Date(`${dateStr}T17:00:00-05:00`);
+  // Use YYYY-MM-DD format in ET for freebusy query
+  // Pass local datetime strings + timeZone to let Google handle DST
+  const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
+  const startET = new Date(`${dateStr}T09:00:00`);
+  const endET = new Date(`${dateStr}T17:00:00`);
 
   try {
     const fb = await calendar.freebusy.query({
       requestBody: {
-        timeMin: startET.toISOString(),
-        timeMax: endET.toISOString(),
+        timeMin: `${dateStr}T09:00:00`,
+        timeMax: `${dateStr}T17:00:00`,
+        timeZone: 'America/New_York',
         items: [{ id: 'primary' }],
       },
     });
@@ -168,8 +168,9 @@ async function getAvailableSlots(date) {
     const slots = [];
     for (let hour = 9; hour < 17; hour++) {
       for (let min of [0, 30]) {
-        // Create slot as explicit ET time
-        const slotStart = new Date(`${dateStr}T${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:00-05:00`);
+        // Create slot as local datetime string for ET
+        const slotTimeStr = `${dateStr}T${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:00`;
+        const slotStart = new Date(slotTimeStr); // local time
         const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
         const conflict = busy.some(b => {
           const bs = new Date(b.start), be = new Date(b.end);
@@ -242,9 +243,9 @@ ${spName}${spPhone ? '\n' + spPhone : ''}`;
     requestBody: {
       summary: meetTitle,
       description: meetDescription, // Will be updated with real Meet link after creation
-      // Format as local ET time string (not UTC ISO) with timezone
-      start: { dateTime: slotDate.toLocaleString('sv-SE', { timeZone: 'America/New_York' }).replace(' ', 'T'), timeZone: 'America/New_York' },
-      end: { dateTime: end.toLocaleString('sv-SE', { timeZone: 'America/New_York' }).replace(' ', 'T'), timeZone: 'America/New_York' },
+      // Pass datetime as local ET string with timezone — Google handles DST
+      start: { dateTime: slotDate.toISOString().slice(0,19), timeZone: 'America/New_York' },
+      end: { dateTime: end.toISOString().slice(0,19), timeZone: 'America/New_York' },
       attendees: email ? [{ email }] : [],
       conferenceData: {
         createRequest: { requestId: uuidv4(), conferenceSolutionKey: { type: 'hangoutsMeet' } },
@@ -478,7 +479,17 @@ router.post('/ivr-handler', async (req, res) => {
   }
   if (digit === '4') {
     logCall('unsubscribed', '4');
-    if (lead) db.prepare("UPDATE leads SET unsubscribed=1 WHERE id=?").run(lead.id);
+    if (lead) {
+      // Delete the lead from the system entirely
+      db.prepare('DELETE FROM leads WHERE id=?').run(lead.id);
+      console.log('[IVR P4] Lead deleted:', lead.name, lead.phone);
+    } else {
+      // Try harder to find lead by normalizing To number
+      const toPhone = req.body.To || '';
+      const toNorm = toPhone.replace(/\D/g,'').slice(-10);
+      const foundLead = db.prepare("SELECT * FROM leads WHERE replace(replace(replace(replace(replace(phone,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%'+toNorm);
+      if (foundLead) { db.prepare('DELETE FROM leads WHERE id=?').run(foundLead.id); console.log('[IVR P4] Lead deleted (normalized):', foundLead.name, foundLead.phone); }
+    }
     return res.type('text/xml').send(twiml(`${say('You have been removed from our list. Thank you. Goodbye.')} <Hangup/>`));
   }
   // Default: replay menu (no input / hangup)
