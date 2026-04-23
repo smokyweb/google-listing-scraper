@@ -149,16 +149,18 @@ async function getAvailableSlots(date) {
   auth.setCredentials({ refresh_token: refreshToken });
   const calendar = google.calendar({ version: 'v3', auth });
 
-  const start = new Date(date);
-  start.setHours(9, 0, 0, 0);
-  const end = new Date(date);
-  end.setHours(17, 0, 0, 0);
+  // Build start/end as ET times (America/New_York)
+  // Use date-only string + time to avoid UTC offset issues
+  const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD in ET
+  // 9 AM ET and 5 PM ET as explicit timezone-aware strings
+  const startET = new Date(`${dateStr}T09:00:00-05:00`);
+  const endET = new Date(`${dateStr}T17:00:00-05:00`);
 
   try {
     const fb = await calendar.freebusy.query({
       requestBody: {
-        timeMin: start.toISOString(),
-        timeMax: end.toISOString(),
+        timeMin: startET.toISOString(),
+        timeMax: endET.toISOString(),
         items: [{ id: 'primary' }],
       },
     });
@@ -166,10 +168,9 @@ async function getAvailableSlots(date) {
     const slots = [];
     for (let hour = 9; hour < 17; hour++) {
       for (let min of [0, 30]) {
-        const slotStart = new Date(date);
-        slotStart.setHours(hour, min, 0, 0);
-        const slotEnd = new Date(slotStart);
-        slotEnd.setMinutes(slotEnd.getMinutes() + 30);
+        // Create slot as explicit ET time
+        const slotStart = new Date(`${dateStr}T${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:00-05:00`);
+        const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
         const conflict = busy.some(b => {
           const bs = new Date(b.start), be = new Date(b.end);
           return slotStart < be && slotEnd > bs;
@@ -241,8 +242,9 @@ ${spName}${spPhone ? '\n' + spPhone : ''}`;
     requestBody: {
       summary: meetTitle,
       description: meetDescription, // Will be updated with real Meet link after creation
-      start: { dateTime: slotDate.toISOString(), timeZone: 'America/New_York' },
-      end: { dateTime: end.toISOString(), timeZone: 'America/New_York' },
+      // Format as local ET time string (not UTC ISO) with timezone
+      start: { dateTime: slotDate.toLocaleString('sv-SE', { timeZone: 'America/New_York' }).replace(' ', 'T'), timeZone: 'America/New_York' },
+      end: { dateTime: end.toLocaleString('sv-SE', { timeZone: 'America/New_York' }).replace(' ', 'T'), timeZone: 'America/New_York' },
       attendees: email ? [{ email }] : [],
       conferenceData: {
         createRequest: { requestId: uuidv4(), conferenceSolutionKey: { type: 'hangoutsMeet' } },
