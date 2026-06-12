@@ -2,13 +2,13 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install root deps
+# Install root deps (force include devDependencies for build)
 COPY package*.json ./
-RUN npm install
+RUN npm install --include=dev
 
-# Install client deps
+# Install client deps (force include devDependencies for vite build)
 COPY client/package*.json ./client/
-RUN npm install --prefix client
+RUN npm install --prefix client --include=dev
 
 # Copy all source
 COPY . .
