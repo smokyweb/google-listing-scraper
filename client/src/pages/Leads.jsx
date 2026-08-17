@@ -5,12 +5,12 @@ import LeadsTable from '../components/LeadsTable';
 import EditLeadModal from '../components/EditLeadModal';
 
 function AddLeadModal({ scrapes, onClose, onSaved }) {
-  const [form, setForm] = useState({ name: '', phone: '', email: '', website: '', address: '', city: '', state: '', keyword: '', scrape_id: '' });
+  const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', email: '', website: '', address: '', city: '', state: '', keyword: '', scrape_id: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const handle = async (e) => {
     e.preventDefault();
-    if (!form.name) return setErr('Name is required');
+    if (!form.first_name && !form.last_name) return setErr('First Name or Last Name is required');
     setSaving(true);
     try {
       await apiFetch('/leads', { method: 'POST', body: JSON.stringify({ ...form, scrape_id: form.scrape_id || null }) });
@@ -29,7 +29,8 @@ function AddLeadModal({ scrapes, onClose, onSaved }) {
         {err && <p className="text-red-400 text-sm mb-3">{err}</p>}
         <form onSubmit={handle} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2"><label className="text-xs text-gray-400">Name *</label><input value={form.name} onChange={f('name')} required className={inp} /></div>
+            <div><label className="text-xs text-gray-400">First Name *</label><input value={form.first_name} onChange={f('first_name')} required className={inp} /></div>
+            <div><label className="text-xs text-gray-400">Last Name *</label><input value={form.last_name} onChange={f('last_name')} required className={inp} /></div>
             <div><label className="text-xs text-gray-400">Phone</label><input value={form.phone} onChange={f('phone')} className={inp} /></div>
             <div><label className="text-xs text-gray-400">Email</label><input value={form.email} onChange={f('email')} type="email" className={inp} /></div>
             <div className="col-span-2"><label className="text-xs text-gray-400">Website</label><input value={form.website} onChange={f('website')} className={inp} /></div>
@@ -288,7 +289,8 @@ export default function Leads() {
 
 function QuickEmailModal({ lead, onClose, onSent }) {
   const [subject, setSubject] = useState(`Following up on your business in ${lead.city||'your area'}`);
-  const [body, setBody] = useState(`<p>Hi ${lead.name||'there'},</p><p>I wanted to reach out regarding your business. I believe we can help you grow.</p><p>Please reply to this email or call us at your convenience.</p><p>Best regards</p>`);
+  const firstName = lead.first_name || 'there';
+  const [body, setBody] = useState(`<p>Hi ${firstName},</p><p>I wanted to reach out regarding your business. I believe we can help you grow.</p><p>Please reply to this email or call us at your convenience.</p><p>Best regards</p>`);
   const [senderId, setSenderId] = useState('');
   const [senders, setSenders] = useState([]);
   const [sending, setSending] = useState(false);
@@ -298,7 +300,7 @@ function QuickEmailModal({ lead, onClose, onSent }) {
     setSending(true);
     try {
       const data = await apiFetch('/dialer/email', { method:'POST', body: JSON.stringify({ toEmail: lead.email, subject, body, senderId: senderId||undefined, leadId: lead.id }) });
-      setResult({ ok: true, msg: data.mock ? 'Mock email sent' : `✅ Email sent to ${lead.name}` });
+      setResult({ ok: true, msg: data.mock ? 'Mock email sent' : `✅ Email sent to ${lead.first_name || lead.name || lead.email}` });
       if (onSent) onSent();
     } catch(err) { setResult({ ok: false, msg: err.message }); }
     finally { setSending(false); }
@@ -308,7 +310,7 @@ function QuickEmailModal({ lead, onClose, onSent }) {
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-lg">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">✉ Email to {lead.name}</h3>
+          <h3 className="text-lg font-semibold text-white">✉ Email to {lead.first_name || lead.name}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
         </div>
         <p className="text-sm text-gray-400 mb-4">To: <span className="text-white font-mono">{lead.email}</span></p>
@@ -335,7 +337,7 @@ function QuickCallModal({ lead, onClose }) {
     setCalling(true);
     try {
       const data = await apiFetch('/dialer/call', { method:'POST', body: JSON.stringify({ toNumber: lead.phone, fromNumberId: fromNumberId||undefined, agentNumber: agentNumber||undefined, leadId: lead.id }) });
-      setResult({ ok: true, msg: data.mock ? 'Mock call queued' : data.mode==='agent-first' ? `✅ Your phone will ring — answer to connect to ${lead.name}` : `✅ Calling ${lead.phone}...` });
+      setResult({ ok: true, msg: data.mock ? 'Mock call queued' : data.mode==='agent-first' ? `✅ Your phone will ring — answer to connect to ${lead.first_name || lead.name}` : `✅ Calling ${lead.phone}...` });
     } catch(err) { setResult({ ok: false, msg: err.message }); }
     finally { setCalling(false); }
   };
@@ -344,7 +346,7 @@ function QuickCallModal({ lead, onClose }) {
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-md">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">📞 Call {lead.name}</h3>
+          <h3 className="text-lg font-semibold text-white">📞 Call {lead.first_name || lead.name}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
         </div>
         <p className="text-sm text-gray-400 mb-4">Calling: <span className="text-white font-mono">{lead.phone}</span></p>
@@ -370,7 +372,7 @@ function QuickSMSModal({ lead, onClose, onSent }) {
     setSending(true);
     try {
       const data = await apiFetch('/dialer/sms', { method:'POST', body: JSON.stringify({ toNumber: lead.phone, message, fromNumberId: fromNumberId||undefined, leadId: lead.id }) });
-      setResult({ ok: true, msg: data.mock ? 'Mock SMS sent' : `✅ SMS sent to ${lead.name}` });
+      setResult({ ok: true, msg: data.mock ? 'Mock SMS sent' : `✅ SMS sent to ${lead.first_name || lead.name || lead.phone}` });
       if (onSent) onSent();
     } catch(err) { setResult({ ok: false, msg: err.message }); }
     finally { setSending(false); }
@@ -380,7 +382,7 @@ function QuickSMSModal({ lead, onClose, onSent }) {
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 w-full max-w-md">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-white">💬 SMS to {lead.name}</h3>
+          <h3 className="text-lg font-semibold text-white">💬 SMS to {lead.first_name || lead.name}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">&times;</button>
         </div>
         <p className="text-sm text-gray-400 mb-4">To: <span className="text-white font-mono">{lead.phone}</span></p>

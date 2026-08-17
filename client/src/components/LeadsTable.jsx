@@ -23,7 +23,8 @@ export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggl
         <thead>
           <tr className="border-b border-gray-800 text-left text-gray-400">
             {showSelect && <th className="p-3"><input type="checkbox" checked={allSelected} onChange={onToggleAll} className="rounded bg-gray-800 border-gray-600" /></th>}
-            <th className="p-3">Name</th>
+            <th className="p-3">First Name</th>
+            <th className="p-3">Last Name</th>
             <th className="p-3">Phone</th>
             <th className="p-3">Email</th>
             <th className="p-3">Website</th>
@@ -39,9 +40,10 @@ export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggl
             <tr key={lead.id} className="border-b border-gray-800/50 hover:bg-gray-900/50">
               {showSelect && <td className="p-3"><input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => onToggleSelect(lead.id)} className="rounded bg-gray-800 border-gray-600" /></td>}
               <td className="p-3 font-medium text-white">
-                {lead.name}
+                {lead.first_name}
                 {lead.source === 'manual' && <span className="ml-1 text-xs text-purple-400">manual</span>}
               </td>
+              <td className="p-3 font-medium text-white">{lead.last_name}</td>
               <td className="p-3 text-gray-300">{lead.phone || '—'}</td>
               <td className="p-3 text-gray-300">
                 {lead.email ? <span>{lead.email}{lead.email_opens > 0 && <span className="ml-1 text-xs text-green-400">👁 {lead.email_opens}</span>}</span> : '—'}
@@ -92,7 +94,7 @@ export default function LeadsTable({ leads, selectedIds, onToggleSelect, onToggl
               )}
             </tr>
           ))}
-          {leads.length === 0 && <tr><td colSpan={10} className="p-8 text-center text-gray-500">No leads found</td></tr>}
+          {leads.length === 0 && <tr><td colSpan={11} className="p-8 text-center text-gray-500">No leads found</td></tr>}
         </tbody>
       </table>
     </div>

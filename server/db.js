@@ -234,3 +234,7 @@ if (existingNumbers.count === 0 && process.env.SIGNALWIRE_PHONE_NUMBER) {
 
 module.exports = db;
 
+
+try { db.exec('ALTER TABLE leads ADD COLUMN first_name TEXT DEFAULT ''); } catch(e) {}
+
+try { db.exec('ALTER TABLE leads ADD COLUMN last_name TEXT DEFAULT ''); } catch(e) {}

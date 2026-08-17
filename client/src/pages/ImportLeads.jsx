@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 
 const EXPECTED_FIELDS = [
-  { key: 'name', label: 'Name', required: true },
+  { key: 'first_name', label: 'First Name', required: true },
+  { key: 'last_name', label: 'Last Name', required: true },
   { key: 'phone', label: 'Phone' },
   { key: 'email', label: 'Email' },
   { key: 'website', label: 'Website' },
@@ -34,7 +35,8 @@ function parseCSV(text) {
 function autoMap(csvHeaders) {
   const mapping = {};
   const ALIASES = {
-    name: ['name', 'business name', 'company', 'company name', 'business', 'title'],
+    first_name: ['first name', 'fname', 'forename', 'given name', 'first'],
+    last_name: ['last name', 'lname', 'surname', 'family name', 'lastname', 'last'],
     phone: ['phone', 'phone number', 'telephone', 'tel', 'mobile', 'cell'],
     email: ['email', 'email address', 'e-mail', 'mail'],
     website: ['website', 'url', 'web', 'site', 'domain'],
@@ -115,7 +117,7 @@ export default function ImportLeads() {
           if (selectedUserId) lead.assigned_user_id = parseInt(selectedUserId);
           return lead;
         })
-        .filter(l => l.name);
+        .filter(l => l.first_name || l.last_name);
 
       let imported = 0, skipped = 0, errors = [];
       for (const lead of leads) {
@@ -138,8 +140,8 @@ export default function ImportLeads() {
 
   const downloadTemplate = () => {
     const csv = EXPECTED_FIELDS.map(f => f.label).join(',') + '\n' +
-      'Acme Plumbing,555-123-4567,info@acmeplumbing.com,https://acmeplumbing.com,123 Main St,Austin,TX,plumber\n' +
-      'Best Electric Co,555-987-6543,contact@bestelectric.com,https://bestelectric.com,456 Oak Ave,Dallas,TX,electrician';
+      'John,Smith,555-123-4567,info@acmeplumbing.com,https://acmeplumbing.com,123 Main St,Austin,plumber\n' +
+      'Jane,Doe,555-987-6543,contact@bestelectric.com,https://bestelectric.com,456 Oak Ave,Dallas,electrician';
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = 'leads_import_template.csv'; a.click();
@@ -270,11 +272,11 @@ export default function ImportLeads() {
           </div>
 
           <div className="flex gap-3">
-            <button onClick={handleImport} disabled={importing || !mapping.name}
+            <button onClick={handleImport} disabled={importing || !(mapping.first_name && mapping.last_name)}
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
               {importing ? `Importing...` : `Import ${csvData.rows.length} Leads`}
             </button>
-            {!mapping.name && <p className="text-sm text-red-400 self-center">⚠ "Name" field must be mapped to import</p>}
+            {!(mapping.first_name && mapping.last_name) && <p className="text-sm text-red-400 self-center">⚠ First Name and Last Name fields must be mapped to import</p>}
           </div>
         </div>
       )}

@@ -21,8 +21,8 @@ router.get('/', authMiddleware, (req, res) => {
   if (city) { where.push('city LIKE ?'); params.push(`%${city}%`); }
   if (state) { where.push('state LIKE ?'); params.push(`%${state}%`); }
   if (search) {
-    where.push('(name LIKE ? OR email LIKE ? OR phone LIKE ?)');
-    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    where.push('(name LIKE ? OR first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR phone LIKE ?)');
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -35,7 +35,7 @@ router.get('/', authMiddleware, (req, res) => {
 
 router.get('/export', authMiddleware, (req, res) => {
   const leads = db.prepare('SELECT * FROM leads ORDER BY id DESC').all();
-  const headers = ['id', 'name', 'phone', 'email', 'website', 'address', 'city', 'state', 'keyword', 'scraped_at', 'email_status', 'call_status', 'sms_status'];
+  const headers = ['id', 'first_name', 'last_name', 'phone', 'email', 'website', 'address', 'city', 'state', 'keyword', 'scraped_at', 'email_status', 'call_status', 'sms_status'];
 
   let csv = headers.join(',') + '\n';
   for (const lead of leads) {
@@ -51,21 +51,24 @@ router.get('/export', authMiddleware, (req, res) => {
 });
 
 router.post('/', authMiddleware, (req, res) => {
-  const { name, phone, email, website, address, city, state, keyword, scrape_id, assigned_user_id } = req.body;
-  if (!name) return res.status(400).json({ error: 'name is required' });
+  const { first_name, last_name, name, phone, email, website, address, city, state, keyword, scrape_id, assigned_user_id } = req.body;
+  if (!name && !first_name) return res.status(400).json({ error: 'name or first_name is required' });
+  const fullName = name || `${first_name||''} ${last_name||''}`.trim();
   const result = db.prepare(`
-    INSERT INTO leads (name, phone, email, website, address, city, state, keyword, scrape_id, source, assigned_user_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name, phone||'', email||'', website||'', address||'', city||'', state||'', keyword||'', scrape_id||null, 'manual', assigned_user_id||null);
-  res.status(201).json({ id: result.lastInsertRowid, name, phone, email, website, address, city, state, keyword, source: 'manual' });
+    INSERT INTO leads (name, first_name, last_name, phone, email, website, address, city, state, keyword, scrape_id, source, assigned_user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(fullName, first_name||'', last_name||'', phone||'', email||'', website||'', address||'', city||'', state||'', keyword||'', scrape_id||null, 'manual', assigned_user_id||null);
+  res.status(201).json({ id: result.lastInsertRowid, name: fullName, first_name: first_name||'', last_name: last_name||'', phone, email, website, address, city, state, keyword, source: 'manual' });
 });
 
 router.patch('/:id', authMiddleware, (req, res) => {
-  const { name, phone, email, website, address, city, state, keyword, unsubscribed, status, assigned_user_id, notes } = req.body;
+  const { name, first_name, last_name, phone, email, website, address, city, state, keyword, unsubscribed, status, assigned_user_id, notes } = req.body;
   const existing = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  db.prepare(`UPDATE leads SET name=?, phone=?, email=?, website=?, address=?, city=?, state=?, keyword=?, unsubscribed=?, status=?, assigned_user_id=?, notes=? WHERE id=?`)
-    .run(name??existing.name, phone??existing.phone, email??existing.email, website??existing.website,
+  const fullName = name ?? `${first_name??existing.first_name||''} ${last_name??existing.last_name||''}`.trim() || existing.name;
+  db.prepare(`UPDATE leads SET name=?, first_name=?, last_name=?, phone=?, email=?, website=?, address=?, city=?, state=?, keyword=?, unsubscribed=?, status=?, assigned_user_id=?, notes=? WHERE id=?`)
+    .run(fullName, first_name??existing.first_name||'', last_name??existing.last_name||'',
+         phone??existing.phone, email??existing.email, website??existing.website,
          address??existing.address, city??existing.city, state??existing.state, keyword??existing.keyword,
          unsubscribed??existing.unsubscribed, status??existing.status??'new',
          assigned_user_id!==undefined ? assigned_user_id : existing.assigned_user_id,

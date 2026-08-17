@@ -3,7 +3,8 @@ import { apiFetch } from '../api';
 
 export default function EditLeadModal({ lead, onClose, onSave }) {
   const [formData, setFormData] = useState({
-    name: '',
+    first_name: '',
+    last_name: '',
     phone: '',
     email: '',
     address: '',
@@ -15,7 +16,8 @@ export default function EditLeadModal({ lead, onClose, onSave }) {
   useEffect(() => {
     if (lead) {
       setFormData({
-        name: lead.name || '',
+        first_name: lead.first_name || '',
+        last_name: lead.last_name || '',
         phone: lead.phone || '',
         email: lead.email || '',
         address: lead.address || '',
@@ -56,13 +58,20 @@ export default function EditLeadModal({ lead, onClose, onSave }) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
       <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-lg p-6">
-        <h3 className="text-xl font-bold text-white mb-4">Edit Lead: {lead?.name}</h3>
+        <h3 className="text-xl font-bold text-white mb-4">Edit Lead: {lead?.first_name} {lead?.last_name}</h3>
         {error && <div className="bg-red-900/20 text-red-300 border border-red-700/50 rounded-md p-3 mb-4 text-sm">{error}</div>}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-1">Name</label>
-            <input type="text" id="name" name="name" value={formData.name} onChange={handleChange}
-              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500" />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="first_name" className="block text-sm font-medium text-gray-300 mb-1">First Name</label>
+              <input type="text" id="first_name" name="first_name" value={formData.first_name} onChange={handleChange}
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label htmlFor="last_name" className="block text-sm font-medium text-gray-300 mb-1">Last Name</label>
+              <input type="text" id="last_name" name="last_name" value={formData.last_name} onChange={handleChange}
+                className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500" />
+            </div>
           </div>
           <div>
             <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-1">Phone</label>
