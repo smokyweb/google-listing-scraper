@@ -25,7 +25,6 @@ export default function PhoneCalls() {
   const [selectedIds, setSelectedIds] = useState(new Set());
 
   const filterByScrape = (scrapeId, all) => scrapeId ? all.filter(l => String(l.scrape_id) === String(scrapeId)) : all;
-  const [filterEmailSent, setFilterEmailSent] = useState(false);
   const [calling, setCalling] = useState(false);
   const [callDelay, setCallDelay] = useState(5);
   const [result, setResult] = useState(null);
