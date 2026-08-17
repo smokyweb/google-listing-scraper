@@ -278,16 +278,6 @@ export default function Leads() {
       )}
 
       {showAddModal && <AddLeadModal scrapes={scrapes} onClose={() => setShowAddModal(false)} onSaved={() => { setShowAddModal(false); fetchLeads(); }} />}
-<<<<<<< HEAD
-
-      {showEditModal && (
-        <EditLeadModal
-          lead={editingLead}
-          onClose={handleCloseEditModal}
-          onSave={handleSaveLead}
-        />
-      )}
-=======
       {editLead && <EditLeadModal lead={editLead} onClose={() => setEditLead(null)} onSaved={() => { setEditLead(null); fetchLeads(); }} />}
       {callLead && <QuickCallModal lead={callLead} onClose={() => setCallLead(null)} />}
       {smsLead && <QuickSMSModal lead={smsLead} onClose={() => setSmsLead(null)} onSent={fetchLeads} />}
@@ -442,7 +432,6 @@ function EditLeadModal({ lead, onClose, onSaved }) {
           </div>
         </form>
       </div>
->>>>>>> fec2d39afa96ae3d7f8dc3fd3531516e018f0302
     </div>
   );
 }
