@@ -258,10 +258,6 @@ export default function Leads() {
             onToggleSelect={toggleSelect}
             onToggleAll={toggleAll}
             showSelect={true}
-<<<<<<< HEAD
-            onEdit={handleEditLead}
-            onDelete={handleDeleteLead}
-=======
             onStatusChange={updateStatus}
             onEdit={setEditLead}
             onDelete={deleteLead}
@@ -269,7 +265,6 @@ export default function Leads() {
             onSMS={setSmsLead}
             onEmail={setEmailLead}
             onNotesSave={saveNotes}
->>>>>>> fec2d39afa96ae3d7f8dc3fd3531516e018f0302
           />
         )}
       </div>
