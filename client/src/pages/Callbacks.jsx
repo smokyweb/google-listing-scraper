@@ -1,3 +1,4 @@
+﻿import { formatEST } from '../utils/time';
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 
@@ -51,10 +52,10 @@ export default function Callbacks() {
             <tbody className="divide-y divide-gray-800">
               {callbacks.map(cb => (
                 <tr key={cb.id} className="hover:bg-gray-800/30 transition-colors">
-                  <td className="px-4 py-3 text-white font-medium">{cb.lead_name || cb.lead_name_resolved || '—'}</td>
+                  <td className="px-4 py-3 text-white font-medium">{cb.lead_name || cb.lead_name_resolved || 'â€”'}</td>
                   <td className="px-4 py-3 text-gray-300 font-mono text-sm">{cb.phone}</td>
-                  <td className="px-4 py-3 text-gray-300 text-sm max-w-xs">{cb.raw_speech || '—'}</td>
-                  <td className="px-4 py-3 text-gray-500 text-xs">{new Date(cb.created_at).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-gray-300 text-sm max-w-xs">{cb.raw_speech || 'â€”'}</td>
+                  <td className="px-4 py-3 text-gray-500 text-xs">{formatEST(cb.created_at)}</td>
                   <td className="px-4 py-3">
                     <select value={cb.status} onChange={e => updateStatus(cb.id, e.target.value)}
                       className={`px-2 py-1 rounded text-xs font-medium border-0 focus:outline-none cursor-pointer ${STATUS_COLORS[cb.status] || 'bg-gray-700 text-gray-300'}`}>
@@ -80,3 +81,4 @@ export default function Callbacks() {
     </div>
   );
 }
+

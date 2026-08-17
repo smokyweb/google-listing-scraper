@@ -12,7 +12,14 @@ function authMiddleware(req, res, next) {
   }
   try {
     const token = header.split(' ')[1];
-    jwt.verify(token, getSecret());
+    const payload = jwt.verify(token, getSecret());
+    // Attach user info to request
+    req.user = {
+      role: payload.role || 'admin',
+      userId: payload.userId || null,
+      name: payload.name || 'Admin',
+      email: payload.email || null,
+    };
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid token' });

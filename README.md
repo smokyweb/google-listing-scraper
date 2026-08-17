@@ -44,11 +44,11 @@ SIGNALWIRE_PHONE_NUMBER=       # Your SignalWire phone number (+E.164)
 TRANSFER_PHONE_NUMBER=         # Phone number for IVR call transfers
 ELEVENLABS_API_KEY=            # ElevenLabs API key for TTS
 ELEVENLABS_VOICE_ID=           # ElevenLabs voice ID
-SMTP_HOST=                     # SMTP server host
-SMTP_PORT=587                  # SMTP port
-SMTP_USER=                     # SMTP username
-SMTP_PASS=                     # SMTP password
-SMTP_FROM=                     # From email address
+SMTP_HOST=smtp.mailgun.org                  # Mailgun SMTP host
+SMTP_PORT=2525                         # Mailgun SMTP port
+SMTP_USER=apps@bluesapps.com            # Mailgun SMTP username
+SMTP_PASS=YOUR_MAILGUN_API_KEY_HERE  # Mailgun SMTP password
+SMTP_FROM="Bluesapps" <apps@bluesapps.com> # Mailgun 'From' email address and name
 GOOGLE_CALENDAR_CLIENT_ID=     # Google OAuth client ID
 GOOGLE_CALENDAR_CLIENT_SECRET= # Google OAuth client secret
 ADMIN_PASSWORD=admin           # Admin portal password
@@ -56,7 +56,17 @@ JWT_SECRET=change-me           # JWT signing secret
 PORT=3001                      # Server port
 ```
 
-Settings can also be configured from the Settings page in the UI. Environment variables take priority.
+## Deployment (Coolify)
+
+For deployment on `bluesapps.com` via Coolify, ensure all sensitive environment variables listed above are configured directly in your Coolify application settings. This is crucial for security and proper operation in production.
+
+- **Subdomain:** `scraper-leads.bluesapps.com` (or `leads.bluesapps.com`)
+- **Admin Portal Password:** `ADMIN_PASSWORD` (set securely in Coolify, defaults to `admin` locally)
+- **JWT Secret:** `JWT_SECRET` (set securely in Coolify, essential for session security)
+
+Follow the standard bluesapps deployment workflow: push changes to GitHub (`smokyweb/google-listing-scraper`), then trigger/monitor deployment via Coolify.
+
+All features work in **mock mode** when API keys aren't configured.
 
 ## Tech Stack
 

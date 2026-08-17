@@ -78,30 +78,59 @@ function getMockResults(keyword, city, state) {
   ];
 }
 
-async function scrapeGooglePlaces(keyword, city, state, apiKey) {
+async function scrapeGooglePlaces(keyword, city, state, apiKey, maxResults = 20, pageToken = null) {
+  let allPlaces = [];
+  let nextPageToken = pageToken;
+  const pages = Math.ceil(maxResults / 20);
   const query = `${keyword} in ${city}, ${state}`;
-  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${apiKey}`;
-  const resp = await fetch(url);
-  const data = await resp.json();
+  const PLACES_API = 'https://places.googleapis.com/v1/places:searchText';
+  const FIELD_MASK = 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri,places.id,nextPageToken';
 
-  if (data.status !== 'OK') {
-    throw new Error(`Google Places API error: ${data.status} - ${data.error_message || ''}`);
+  for (let page = 0; page < pages; page++) {
+    const body = { textQuery: query, pageSize: 20 };
+    if (nextPageToken) body.pageToken = nextPageToken;
+
+    const resp = await fetch(PLACES_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': FIELD_MASK },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (page === 0) throw new Error(`Google Places API error: ${resp.status} - ${err.error?.message || ''}`);
+      break;
+    }
+
+    const data = await resp.json();
+    const places = data.places || [];
+    allPlaces.push(...places);
+    nextPageToken = data.nextPageToken || null;
+    if (!nextPageToken || allPlaces.length >= maxResults) break;
+    // Small delay between pages
+    await new Promise(r => setTimeout(r, 500));
   }
 
-  const leads = [];
-  for (const place of data.results || []) {
-    const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,website,formatted_address&key=${apiKey}`;
-    const detailResp = await fetch(detailUrl);
-    const detail = await detailResp.json();
-    const r = detail.result || {};
+  // Store the last next_page_token for "Scrape More" functionality
+  scrapeGooglePlaces._lastPageToken = nextPageToken;
 
-    leads.push({
-      name: r.name || place.name,
-      phone: r.formatted_phone_number || '',
-      email: '',
-      website: r.website || '',
-      address: r.formatted_address || place.formatted_address || '',
-    });
+  const leads = [];
+  for (const place of allPlaces.slice(0, maxResults)) {
+    // Map new API format to our lead format
+    const detailUrl = place.id ? `https://places.googleapis.com/v1/places/${place.id}?fields=displayName,formattedAddress,nationalPhoneNumber,websiteUri&key=${apiKey}` : null;
+    let detail = place;
+    if (detailUrl) {
+      try {
+        const dr = await fetch(detailUrl, { headers: { 'X-Goog-Api-Key': apiKey, 'X-Goog-FieldMask': 'displayName,formattedAddress,nationalPhoneNumber,websiteUri' } });
+        if (dr.ok) detail = await dr.json();
+      } catch {}
+    }
+    // Use data from the search result directly (avoid extra detail call if we have it)
+    const name = (detail.displayName?.text || place.displayName?.text || '');
+    const phone = detail.nationalPhoneNumber || place.nationalPhoneNumber || '';
+    const website = detail.websiteUri || place.websiteUri || '';
+    const address = detail.formattedAddress || place.formattedAddress || '';
+    leads.push({ name, phone, email: '', website, address });
   }
   return leads;
 }
@@ -109,16 +138,17 @@ async function scrapeGooglePlaces(keyword, city, state, apiKey) {
 // POST /api/scrape — run a new scrape
 router.post('/', authMiddleware, async (req, res) => {
   try {
-    const { keyword, city, state } = req.body;
+    const { keyword, city, state, maxResults = 20 } = req.body;
     if (!keyword || !city || !state) {
       return res.status(400).json({ error: 'keyword, city, and state are required' });
     }
 
     const apiKey = getApiKey();
     const isMock = !apiKey;
+    const limit = Math.min(Math.max(parseInt(maxResults) || 20, 20), 60); // Google Places API max is 60 results (3 pages) per query
     let results = isMock
       ? getMockResults(keyword, city, state)
-      : await scrapeGooglePlaces(keyword, city, state, apiKey);
+      : await scrapeGooglePlaces(keyword, city, state, apiKey, limit);
 
     // Scrape websites for email addresses
     const withEmails = await Promise.all(results.map(async (lead) => {
@@ -129,11 +159,16 @@ router.post('/', authMiddleware, async (req, res) => {
       return { ...lead, email_scraped: 0 };
     }));
 
-    // Create scrape record
+    // Save next_page_token if available for "Scrape More"
+    const nextPageToken = scrapeGooglePlaces._lastPageToken || null;
+
+    // Create scrape record with user info
     const scrapeName = `${keyword} - ${city}, ${state}`;
+    const createdByUserId = req.user?.userId || null;
+    const createdByName = req.user?.name || 'Admin';
     const scrapeRecord = db.prepare(
-      'INSERT INTO scrapes (name, keyword, city, state, lead_count, mock) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(scrapeName, keyword, city, state, withEmails.length, isMock ? 1 : 0);
+      'INSERT INTO scrapes (name, keyword, city, state, lead_count, mock, next_page_token, created_by_user_id, created_by_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(scrapeName, keyword, city, state, withEmails.length, isMock ? 1 : 0, nextPageToken, createdByUserId, createdByName);
     const scrapeId = scrapeRecord.lastInsertRowid;
 
     // Insert leads with scrape_id
@@ -164,9 +199,61 @@ router.post('/', authMiddleware, async (req, res) => {
       leads: inserted,
       mock: isMock,
       emails_found: inserted.filter(l => l.email).length,
+      has_more: !!nextPageToken,
     });
   } catch (err) {
     console.error('Scrape error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/scrape/more/:scrapeId — fetch next page of results for an existing scrape
+router.post('/more/:scrapeId', authMiddleware, async (req, res) => {
+  try {
+    const scrape = db.prepare('SELECT * FROM scrapes WHERE id=?').get(req.params.scrapeId);
+    if (!scrape) return res.status(404).json({ error: 'Scrape not found' });
+    if (!scrape.next_page_token) return res.status(400).json({ error: 'No more results available for this scrape. Google only provides up to 3 pages per query.' });
+
+    const apiKey = getApiKey();
+    if (!apiKey) return res.status(400).json({ error: 'Google Places API key not configured' });
+
+    let results;
+    try {
+      results = await scrapeGooglePlaces(scrape.keyword, scrape.city, scrape.state, apiKey, 20, scrape.next_page_token);
+    } catch(err) {
+      // Clear expired token from DB
+      db.prepare('UPDATE scrapes SET next_page_token = NULL WHERE id = ?').run(req.params.scrapeId);
+      if (err.message.includes('INVALID_REQUEST')) {
+        return res.status(400).json({ error: 'Page token has expired (Google tokens last ~2 minutes). Run a new scrape to get more results.' });
+      }
+      throw err;
+    }
+    const nextPageToken = scrapeGooglePlaces._lastPageToken || null;
+
+    const withEmails = await Promise.all(results.map(async (lead) => {
+      if (lead.website) {
+        const emails = await scrapeWebsiteForEmail(lead.website);
+        return { ...lead, email: emails[0] || '', email_scraped: 1 };
+      }
+      return { ...lead, email_scraped: 0 };
+    }));
+
+    const insert = db.prepare(`INSERT INTO leads (scrape_id, name, phone, email, website, address, city, state, keyword, email_scraped) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const insertMany = db.transaction((leads) => {
+      const inserted = [];
+      for (const lead of leads) {
+        const info = insert.run(scrape.id, lead.name, lead.phone, lead.email, lead.website, lead.address, scrape.city, scrape.state, scrape.keyword, lead.email_scraped ? 1 : 0);
+        inserted.push({ id: info.lastInsertRowid, scrape_id: scrape.id, ...lead });
+      }
+      return inserted;
+    });
+    const inserted = insertMany(withEmails);
+
+    // Update scrape record
+    db.prepare('UPDATE scrapes SET lead_count = lead_count + ?, next_page_token = ? WHERE id = ?').run(inserted.length, nextPageToken, scrape.id);
+
+    res.json({ count: inserted.length, leads: inserted, emails_found: inserted.filter(l => l.email).length, has_more: !!nextPageToken });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -175,7 +262,7 @@ router.post('/', authMiddleware, async (req, res) => {
 router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
   try {
     const { scrapeId } = req.params;
-    const leads = db.prepare('SELECT * FROM leads WHERE scrape_id = ? AND website != ""').all(scrapeId);
+    const leads = db.prepare("SELECT * FROM leads WHERE scrape_id = ? AND website != '' AND website IS NOT NULL").all(scrapeId);
 
     let updated = 0;
     for (const lead of leads) {

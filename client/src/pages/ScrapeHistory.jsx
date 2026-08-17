@@ -1,3 +1,4 @@
+﻿import { formatEST } from '../utils/time';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api';
@@ -5,15 +6,28 @@ import { apiFetch } from '../api';
 export default function ScrapeHistory() {
   const [scrapes, setScrapes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [salesUsers, setSalesUsers] = useState([]);
+  const [filterUser, setFilterUser] = useState('');
   const navigate = useNavigate();
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortDir, setSortDir] = useState('desc');
+  const role = localStorage.getItem('gls_role') || 'admin';
+  const isAdmin = role === 'admin';
 
-  const load = () => {
-    apiFetch('/scrapes')
+  const load = (userId, sb, sd) => {
+    const p = new URLSearchParams();
+    if (userId) p.set('filterUser', userId);
+    p.set('sortBy', sb || sortBy || 'created_at');
+    p.set('sortDir', sd || sortDir || 'desc');
+    apiFetch(`/scrapes?${p.toString()}`)
       .then(data => { setScrapes(data); setLoading(false); })
       .catch(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load('', 'created_at', 'desc');
+    if (isAdmin) apiFetch('/sales-users').then(setSalesUsers).catch(() => {});
+  }, []);
 
   const handleDelete = async (id, name) => {
     if (!window.confirm(`Delete scrape "${name}" and all its leads?`)) return;
@@ -26,9 +40,38 @@ export default function ScrapeHistory() {
     window.open(`/api/scrapes/${id}/export?token=${token}`, '_blank');
   };
 
+
+
+  const assignScrape = async (scrapeId, userId, userName) => {
+    await apiFetch(`/scrapes/${scrapeId}/assign`, { method: 'PATCH', body: JSON.stringify({ userId, userName }) });
+    load(filterUser, sortBy, sortDir);
+  };
+  const handleSort = (col) => {
+    const newDir = sortBy === col && sortDir === 'desc' ? 'asc' : 'desc';
+    setSortBy(col); setSortDir(newDir); setLoading(true);
+    load(filterUser, col, newDir);
+  };
+  const SortHeader = ({ col, label }) => (
+    <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase cursor-pointer hover:text-white select-none"
+      onClick={() => handleSort(col)}>
+      {label} {sortBy === col ? (sortDir === 'asc' ? '↑' : '↓') : '↕'}
+    </th>
+  );
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-6">Scrape History</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-white">Scrape History</h2>
+        {isAdmin && salesUsers.length > 0 && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-400">Filter by user:</label>
+            <select value={filterUser} onChange={e => { const v=e.target.value; setFilterUser(v); setLoading(true); load(v, sortBy, sortDir); }}
+              className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+              <option value="">All users</option>
+              {salesUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <div className="text-gray-500 p-8 text-center">Loading...</div>
@@ -41,9 +84,10 @@ export default function ScrapeHistory() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-800">
-                <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Scrape Name</th>
-                <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Date</th>
-                <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Leads</th>
+                <SortHeader col="name" label="Scrape Name" />
+                <SortHeader col="created_at" label="Date" />
+              {isAdmin && <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">By</th>}
+                <SortHeader col="lead_count" label="Leads" />
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Emails Found</th>
                 <th className="text-left px-6 py-4 text-xs font-medium text-gray-400 uppercase">Actions</th>
               </tr>
@@ -61,8 +105,23 @@ export default function ScrapeHistory() {
                     {s.mock ? <span className="ml-2 px-1.5 py-0.5 bg-yellow-900/50 text-yellow-400 rounded text-xs">mock</span> : null}
                   </td>
                   <td className="px-6 py-4 text-gray-400 text-sm">
-                    {new Date(s.created_at).toLocaleString()}
+                    {formatEST(s.created_at)}
                   </td>
+                  {isAdmin && (
+                    <td className="px-6 py-4">
+                      <select
+                        value={s.created_by_user_id || ''}
+                        onChange={e => {
+                          const u = salesUsers.find(u => String(u.id) === e.target.value);
+                          assignScrape(s.id, u ? u.id : null, u ? u.name : 'Admin');
+                        }}
+                        className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-white focus:outline-none focus:border-blue-500 min-w-[100px]"
+                      >
+                        <option value="">Admin</option>
+                        {salesUsers.map(u => <option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                      </select>
+                    </td>
+                  )}
                   <td className="px-6 py-4">
                     <span className="text-white font-semibold">{s.lead_count}</span>
                   </td>
@@ -102,3 +161,10 @@ export default function ScrapeHistory() {
     </div>
   );
 }
+
+
+
+
+
+
+

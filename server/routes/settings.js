@@ -3,6 +3,7 @@ const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
 const SETTING_KEYS = [
+  'gemini_api_key',
   'google_places_api_key',
   'signalwire_project_id',
   'signalwire_token',

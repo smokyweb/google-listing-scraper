@@ -1,15 +1,22 @@
-const router = require('express').Router();
+﻿const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
 router.get('/', authMiddleware, (req, res) => {
   const { page = 1, limit = 50, keyword, city, state, search, scrape_id } = req.query;
+  const isSalesperson = req.user?.role === 'salesperson';
+  const userId = req.user?.userId;
   const offset = (page - 1) * limit;
 
   let where = [];
   let params = [];
 
   if (scrape_id) { where.push('scrape_id = ?'); params.push(Number(scrape_id)); }
+  // Salesperson only sees their own leads (from their scrapes)
+  if (isSalesperson && userId) {
+    where.push("(scrape_id IN (SELECT id FROM scrapes WHERE created_by_user_id = ?) OR (source = 'manual' AND id IN (SELECT id FROM leads WHERE scrape_id IS NULL)))");
+    params.push(userId);
+  }
   if (keyword) { where.push('keyword LIKE ?'); params.push(`%${keyword}%`); }
   if (city) { where.push('city LIKE ?'); params.push(`%${city}%`); }
   if (state) { where.push('state LIKE ?'); params.push(`%${state}%`); }
@@ -44,23 +51,26 @@ router.get('/export', authMiddleware, (req, res) => {
 });
 
 router.post('/', authMiddleware, (req, res) => {
-  const { name, phone, email, website, address, city, state, keyword, scrape_id } = req.body;
+  const { name, phone, email, website, address, city, state, keyword, scrape_id, assigned_user_id } = req.body;
   if (!name) return res.status(400).json({ error: 'name is required' });
   const result = db.prepare(`
-    INSERT INTO leads (name, phone, email, website, address, city, state, keyword, scrape_id, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')
-  `).run(name, phone||'', email||'', website||'', address||'', city||'', state||'', keyword||'', scrape_id||null);
+    INSERT INTO leads (name, phone, email, website, address, city, state, keyword, scrape_id, source, assigned_user_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(name, phone||'', email||'', website||'', address||'', city||'', state||'', keyword||'', scrape_id||null, 'manual', assigned_user_id||null);
   res.status(201).json({ id: result.lastInsertRowid, name, phone, email, website, address, city, state, keyword, source: 'manual' });
 });
 
 router.patch('/:id', authMiddleware, (req, res) => {
-  const { name, phone, email, website, address, city, state, keyword, unsubscribed } = req.body;
+  const { name, phone, email, website, address, city, state, keyword, unsubscribed, status, assigned_user_id, notes } = req.body;
   const existing = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  db.prepare(`UPDATE leads SET name=?, phone=?, email=?, website=?, address=?, city=?, state=?, keyword=?, unsubscribed=? WHERE id=?`)
+  db.prepare(`UPDATE leads SET name=?, phone=?, email=?, website=?, address=?, city=?, state=?, keyword=?, unsubscribed=?, status=?, assigned_user_id=?, notes=? WHERE id=?`)
     .run(name??existing.name, phone??existing.phone, email??existing.email, website??existing.website,
          address??existing.address, city??existing.city, state??existing.state, keyword??existing.keyword,
-         unsubscribed??existing.unsubscribed, req.params.id);
+         unsubscribed??existing.unsubscribed, status??existing.status??'new',
+         assigned_user_id!==undefined ? assigned_user_id : existing.assigned_user_id,
+         notes!==undefined ? notes : (existing.notes||''),
+         req.params.id);
   res.json({ success: true });
 });
 
@@ -70,3 +80,4 @@ router.delete('/:id', authMiddleware, (req, res) => {
 });
 
 module.exports = router;
+

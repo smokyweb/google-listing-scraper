@@ -1,8 +1,37 @@
-const router = require('express').Router();
+﻿const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const { google } = require('googleapis');
 const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
+
+// Ensure audio directory exists for ElevenLabs pre-generated files
+const AUDIO_DIR = path.join(__dirname, '..', '..', 'data', 'audio');
+fs.mkdirSync(AUDIO_DIR, { recursive: true });
+
+// Generate ElevenLabs TTS and save to a file, return public URL
+async function generateElevenLabsAudio(text, config, baseUrl) {
+  if (!config.apiKey) return null;
+  try {
+    const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config.voiceId}`, {
+      method: 'POST',
+      headers: { 'xi-api-key': config.apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 }, speed: 0.85 }),
+    });
+    if (!resp.ok) throw new Error(`ElevenLabs ${resp.status}`);
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    const filename = `call_${uuidv4()}.mp3`;
+    fs.writeFileSync(path.join(AUDIO_DIR, filename), buffer);
+    setTimeout(() => { try { fs.unlinkSync(path.join(AUDIO_DIR, filename)); } catch {} }, 3600000);
+    const audioUrl = `${baseUrl}/audio/${filename}`;
+    console.log(`[ElevenLabs] Audio ready (${buffer.length} bytes): ${audioUrl}`);
+    return audioUrl;
+  } catch (err) {
+    console.error('[ElevenLabs] Error:', err.message);
+    return null;
+  }
+}
 
 function getSetting(key) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -54,9 +83,13 @@ function getIvrSession(callSid) {
   return session;
 }
 
-function updateIvrSession(callSid, step, data) {
+function updateIvrSession(callSid, step, newData) {
+  // Merge with existing data to preserve fields like fromNumber across IVR steps
+  const existing = db.prepare('SELECT data FROM ivr_sessions WHERE call_sid=?').get(callSid);
+  const existingData = existing ? (JSON.parse(existing.data || '{}')) : {};
+  const merged = { ...existingData, ...newData };
   db.prepare("UPDATE ivr_sessions SET step=?, data=?, updated_at=datetime('now') WHERE call_sid=?")
-    .run(step, JSON.stringify(data), callSid);
+    .run(step, JSON.stringify(merged), callSid);
 }
 
 function twiml(content) {
@@ -116,16 +149,18 @@ async function getAvailableSlots(date) {
   auth.setCredentials({ refresh_token: refreshToken });
   const calendar = google.calendar({ version: 'v3', auth });
 
-  const start = new Date(date);
-  start.setHours(9, 0, 0, 0);
-  const end = new Date(date);
-  end.setHours(17, 0, 0, 0);
+  // Use YYYY-MM-DD format in ET for freebusy query
+  // Pass local datetime strings + timeZone to let Google handle DST
+  const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
+  const startET = new Date(`${dateStr}T09:00:00`);
+  const endET = new Date(`${dateStr}T17:00:00`);
 
   try {
     const fb = await calendar.freebusy.query({
       requestBody: {
-        timeMin: start.toISOString(),
-        timeMax: end.toISOString(),
+        timeMin: `${dateStr}T09:00:00`,
+        timeMax: `${dateStr}T17:00:00`,
+        timeZone: 'America/New_York',
         items: [{ id: 'primary' }],
       },
     });
@@ -133,10 +168,10 @@ async function getAvailableSlots(date) {
     const slots = [];
     for (let hour = 9; hour < 17; hour++) {
       for (let min of [0, 30]) {
-        const slotStart = new Date(date);
-        slotStart.setHours(hour, min, 0, 0);
-        const slotEnd = new Date(slotStart);
-        slotEnd.setMinutes(slotEnd.getMinutes() + 30);
+        // Create slot as local datetime string for ET
+        const slotTimeStr = `${dateStr}T${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:00`;
+        const slotStart = new Date(slotTimeStr); // local time
+        const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
         const conflict = busy.some(b => {
           const bs = new Date(b.start), be = new Date(b.end);
           return slotStart < be && slotEnd > bs;
@@ -153,10 +188,17 @@ async function getAvailableSlots(date) {
   }
 }
 
-async function createCalendarEvent(lead, slotDate, email) {
+async function createCalendarEvent(lead, slotDate, email, salespersonId) {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID || getSetting('google_calendar_client_id');
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET || getSetting('google_calendar_client_secret');
-  const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || getSetting('google_calendar_refresh_token');
+
+  // Use salesperson's calendar if available, otherwise fall back to admin calendar
+  let refreshToken = null;
+  if (salespersonId) {
+    const sp = db.prepare('SELECT gcal_refresh_token, gcal_access_token FROM sales_users WHERE id=?').get(salespersonId);
+    if (sp?.gcal_refresh_token) refreshToken = sp.gcal_refresh_token;
+  }
+  if (!refreshToken) refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || getSetting('google_calendar_refresh_token');
   if (!clientId || !clientSecret || !refreshToken) throw new Error('Calendar not configured');
 
   const auth = new google.auth.OAuth2(clientId, clientSecret);
@@ -166,14 +208,44 @@ async function createCalendarEvent(lead, slotDate, email) {
   const end = new Date(slotDate);
   end.setMinutes(end.getMinutes() + 30);
 
-  const event = await calendar.events.insert({
+  // Get salesperson info for meeting description
+  let spName = 'Sales Team';
+  let spPhone = '';
+  if (salespersonId) {
+    const sp = db.prepare('SELECT * FROM sales_users WHERE id = ?').get(salespersonId);
+    if (sp) {
+      spName = sp.name || spName;
+      spPhone = sp.forward_number || '';
+    }
+  }
+
+  const companyName = lead?.name || '';
+  const meetTitle = companyName ? `App Demo Meeting - ${companyName}` : 'App Demo Meeting';
+  const greeting = companyName ? `Hello ${companyName},` : 'Hello,';
+  // Description will be updated after event creation with the real Meet link
+  const meetDescription = `${greeting}
+
+Please accept this invite for our meeting to show you a demo of our app/software for your business.
+
+This is a Google Meet Web Conference.
+Please join the meeting here:
+%%MEET_LINK%%
+
+We look forward to meeting with you.
+
+Thanks!
+${spName}${spPhone ? '\n' + spPhone : ''}`;
+
+  let eventResult = await calendar.events.insert({
     calendarId: 'primary',
     conferenceDataVersion: 1,
+    sendUpdates: 'all', // Send invite from the calendar owner (salesperson)
     requestBody: {
-      summary: `Meeting with ${lead.name || lead.phone}`,
-      description: `Scheduled via phone call. Business: ${lead.name}, City: ${lead.city}, State: ${lead.state}`,
-      start: { dateTime: slotDate.toISOString() },
-      end: { dateTime: end.toISOString() },
+      summary: meetTitle,
+      description: meetDescription, // Will be updated with real Meet link after creation
+      // Pass datetime as local ET string with timezone — Google handles DST
+      start: { dateTime: slotDate.toISOString().slice(0,19), timeZone: 'America/New_York' },
+      end: { dateTime: end.toISOString().slice(0,19), timeZone: 'America/New_York' },
       attendees: email ? [{ email }] : [],
       conferenceData: {
         createRequest: { requestId: uuidv4(), conferenceSolutionKey: { type: 'hangoutsMeet' } },
@@ -181,7 +253,27 @@ async function createCalendarEvent(lead, slotDate, email) {
       reminders: { useDefault: true },
     },
   });
-  return event.data;
+  const eventData = eventResult.data;
+
+  // Now update the description with the real Google Meet link
+  const meetLink = eventData.hangoutLink || eventData.conferenceData?.entryPoints?.[0]?.uri || '';
+  if (meetLink && meetDescription.includes('%%MEET_LINK%%')) {
+    const dialInfo = eventData.conferenceData?.entryPoints?.find(e => e.entryPointType === 'phone');
+    const dialText = dialInfo ? `\nDial in: ${dialInfo.uri}\nPIN: ${dialInfo.pin || ''}` : '';
+    const updatedDesc = meetDescription.replace('%%MEET_LINK%%', `${meetLink}${dialText}`);
+    try {
+      await calendar.events.patch({
+        calendarId: 'primary',
+        eventId: eventData.id,
+        requestBody: { description: updatedDesc },
+      });
+      eventData.description = updatedDesc;
+    } catch(patchErr) {
+      console.error('Failed to update description with Meet link:', patchErr.message);
+    }
+  }
+
+  return eventData;
 }
 
 function formatSlotLabel(slot) {
@@ -194,7 +286,7 @@ function formatDate(slot) {
   return slot.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
 
-// ─── TTS PREVIEW ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ TTS PREVIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/tts-preview', authMiddleware, async (req, res) => {
   try {
     const { text } = req.body;
@@ -204,7 +296,7 @@ router.post('/tts-preview', authMiddleware, async (req, res) => {
     const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${config.voiceId}`, {
       method: 'POST',
       headers: { 'xi-api-key': config.apiKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
-      body: JSON.stringify({ text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.5 } }),
+      body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2', voice_settings: { stability: 0.5, similarity_boost: 0.75 }, speed: 0.85 }),
     });
     if (!resp.ok) throw new Error(`ElevenLabs error: ${resp.status}`);
     res.setHeader('Content-Type', 'audio/mpeg');
@@ -214,14 +306,15 @@ router.post('/tts-preview', authMiddleware, async (req, res) => {
   }
 });
 
-// ─── TRIGGER OUTBOUND CALLS ────────────────────────────────────────────────────
+// â”€â”€â”€ TRIGGER OUTBOUND CALLS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/trigger', authMiddleware, async (req, res) => {
   try {
-    const { script, leadIds, phoneNumberId } = req.body;
+    const { script, leadIds, phoneNumberId, callDelay = 0 } = req.body;
+    const delayMs = Math.min(Math.max(parseInt(callDelay) || 0, 0), 120) * 1000; // cap at 2 min
     const activeScript = db.prepare('SELECT * FROM voice_scripts WHERE is_active = 1 LIMIT 1').get();
     const callScript = script || activeScript?.script || 'Hello {company_name}, this is a business outreach call.';
     const swConfig = getSignalWireConfig();
-    const transferNumber = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
+    const transferNumber = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
     const fromNumber = resolvePhoneNumber(phoneNumberId, swConfig.phoneNumber);
     const isMock = !swConfig.projectId || !swConfig.token;
     const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
@@ -239,6 +332,9 @@ router.post('/trigger', authMiddleware, async (req, res) => {
     const updateLead = db.prepare("UPDATE leads SET call_status='called', called_at=datetime('now') WHERE id=?");
 
     let calledCount = 0;
+    const elevenLabsConfig = getElevenLabsConfig();
+    // Note: Menu uses SignalWire <Say> to preserve ElevenLabs credits for personalized scripts
+
     const errors = [];
     for (const lead of leads) {
       const personalized = callScript
@@ -261,12 +357,23 @@ router.post('/trigger', authMiddleware, async (req, res) => {
         calledCount++;
       } else {
         try {
+          // Generate per-lead ElevenLabs audio for the personalized script
+          const scriptAudioUrl = await generateElevenLabsAudio(personalized, elevenLabsConfig, baseUrl);
+
+          const scriptPart = scriptAudioUrl
+            ? `<Play>${scriptAudioUrl}</Play>`
+            : say(personalized);
+          // Menu always uses SignalWire Say to save ElevenLabs credits
+          const menuPart = say('Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.');
+
+          // Voicemail fallback: if no answer, leave a message after the beep
+          const voicemailScript = personalized + ' Please leave a message after the beep and we will get back to you.';
           const ivrTwiml = `<?xml version="1.0" encoding="UTF-8"?><Response>
-  ${say(personalized)}
-  <Gather numDigits="1" action="${baseUrl}/api/calls/ivr-handler" method="POST" timeout="10">
-    ${say('Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.')}
+  ${scriptPart}
+  <Gather numDigits="1" action="${baseUrl}/api/calls/ivr-handler" method="POST" timeout="15">
+    ${menuPart}
   </Gather>
-  ${say('We did not receive your input. Goodbye.')}
+  ${say('We did not receive your input.')} ${say('Please leave a message after the beep.')} <Record maxLength="30" action="${baseUrl}/api/calls/recording-done" />
 </Response>`;
           const authHeader = Buffer.from(`${swConfig.projectId}:${swConfig.token}`).toString('base64');
           const callResp = await fetch(`https://${swConfig.spaceUrl}/api/laml/2010-04-01/Accounts/${swConfig.projectId}/Calls.json`, {
@@ -279,10 +386,12 @@ router.post('/trigger', authMiddleware, async (req, res) => {
             calledCount++;
           } else {
             const errBody = await callResp.text();
-            const errMsg = `${lead.name} (${toPhone}): HTTP ${callResp.status} — ${errBody.substring(0, 200)}`;
+            const errMsg = `${lead.name} (${toPhone}): HTTP ${callResp.status} â€” ${errBody.substring(0, 200)}`;
             errors.push(errMsg);
             console.error('[CALL FAILED]', errMsg);
           }
+          // Delay between calls to reduce spam flags
+          if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
         } catch (err) {
           errors.push(`${lead.name}: ${err.message}`);
           console.error(`Call error for ${toPhone}:`, err.message);
@@ -293,22 +402,64 @@ router.post('/trigger', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ─── IVR HANDLER (DTMF from outbound call) ─────────────────────────────────────
+// â”€â”€â”€ IVR HANDLER (DTMF from outbound call) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-handler', async (req, res) => {
   const digit = req.body.Digits;
   const callSid = req.body.CallSid || 'unknown';
   const fromPhone = req.body.To || req.body.From || '';
   const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
-  const transferNumber = process.env.TRANSFER_PHONE_NUMBER || getSetting('transfer_phone_number') || '+15551234567';
+  const transferNumber = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
 
+
+  // If no digit pressed, this is a fresh inbound call — forward to salesperson or global transfer
+  if (!digit) {
+    const lead = findLeadByPhone(fromPhone);
+    const calledNum = req.body.To || '';
+    let inboundForward = transferNumber;
+    try {
+      const calledNorm = calledNum.replace(/\D/g, '').slice(-10);
+      const phoneEntry = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%' + calledNorm);
+      if (phoneEntry) {
+        const sp = db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id);
+        if (sp?.forward_number) inboundForward = sp.forward_number;
+      }
+    } catch(e) {}
+    console.log('[INBOUND CALL] From:', fromPhone, lead ? '(lead: '+lead.name+')' : '', '-> forward to:', inboundForward);
+    return res.type('text/xml').send(twiml(
+      say('Thank you for calling. Please hold while we connect you to our team.') +
+      '<Dial timeout="30">' + inboundForward + '</Dial>' +
+      say('Sorry, no one is available right now. Please call back later.') +
+      '<Hangup/>'
+    ));
+  }
   const lead = findLeadByPhone(fromPhone);
   if (lead && callSid !== 'unknown') {
     db.prepare("INSERT OR REPLACE INTO ivr_sessions (call_sid, lead_id, lead_phone, step, data, updated_at) VALUES (?, ?, ?, 'menu', '{}', datetime('now'))")
       .run(callSid, lead.id, fromPhone);
   }
 
+  // Log call outcome
+  function logCall(outcome, button) {
+    if (lead) {
+      db.prepare('INSERT INTO call_logs (lead_id, lead_name, lead_phone, scrape_id, call_sid, outcome, button_pressed) VALUES (?,?,?,?,?,?,?)')
+        .run(lead.id, lead.name, fromPhone, lead.scrape_id||null, callSid, outcome, button||null);
+    }
+  }
+
   if (digit === '1') {
-    return res.type('text/xml').send(twiml(`${say('Connecting you to a live staff member. Please hold.')} <Dial>${transferNumber}</Dial>`));
+    logCall('transferred', '1');
+    // Look up salesperson assigned to the outbound From number for per-salesperson transfer
+    let dialTo = transferNumber;
+    try {
+      const outboundFrom = req.body.From || '';
+      const fromNorm = outboundFrom.replace(/\D/g, '').slice(-10);
+      const phoneEntry = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%' + fromNorm);
+      if (phoneEntry) {
+        const sp = db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id);
+        if (sp?.forward_number) { dialTo = sp.forward_number; console.log('[IVR P1] Routing to salesperson', sp.name, ':', dialTo); }
+      }
+    } catch(e) {}
+    return res.type('text/xml').send(twiml(`${say('Connecting you to a live staff member. Please hold.')} <Dial>${dialTo}</Dial>`));
   }
   if (digit === '2') {
     return res.type('text/xml').send(twiml(`
@@ -318,7 +469,8 @@ router.post('/ivr-handler', async (req, res) => {
       ${say('We did not receive your input. Goodbye.')} <Hangup/>`));
   }
   if (digit === '3') {
-    if (callSid !== 'unknown') updateIvrSession(callSid, 'calendar_ask_day', {});
+    logCall('meeting_scheduled', '3');
+    if (callSid !== 'unknown') updateIvrSession(callSid, 'calendar_ask_day', { fromNumber: req.body.From || '' });
     return res.type('text/xml').send(twiml(`
       <Gather input="speech" action="${baseUrl}/api/calls/ivr-calendar-day" method="POST" language="en-US" timeout="10">
         ${say('What day would you like to schedule a virtual meeting? Please say a date like Monday or April twenty first.')}
@@ -326,12 +478,22 @@ router.post('/ivr-handler', async (req, res) => {
       ${say('We did not receive your input. Goodbye.')} <Hangup/>`));
   }
   if (digit === '4') {
+    logCall('unsubscribed', '4');
     if (lead) {
-      db.prepare("UPDATE leads SET unsubscribed=1 WHERE id=?").run(lead.id);
+      // Delete the lead from the system entirely
+      db.prepare('DELETE FROM leads WHERE id=?').run(lead.id);
+      console.log('[IVR P4] Lead deleted:', lead.name, lead.phone);
+    } else {
+      // Try harder to find lead by normalizing To number
+      const toPhone = req.body.To || '';
+      const toNorm = toPhone.replace(/\D/g,'').slice(-10);
+      const foundLead = db.prepare("SELECT * FROM leads WHERE replace(replace(replace(replace(replace(phone,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%'+toNorm);
+      if (foundLead) { db.prepare('DELETE FROM leads WHERE id=?').run(foundLead.id); console.log('[IVR P4] Lead deleted (normalized):', foundLead.name, foundLead.phone); }
     }
     return res.type('text/xml').send(twiml(`${say('You have been removed from our list. Thank you. Goodbye.')} <Hangup/>`));
   }
-  // Default: replay menu
+  // Default: replay menu (no input / hangup)
+  logCall('no_input', null);
   return res.type('text/xml').send(twiml(`
     <Gather numDigits="1" action="${baseUrl}/api/calls/ivr-handler" method="POST" timeout="10">
       ${say('Press 1 to connect to a live staff member. Press 2 to set a call back time. Press 3 to schedule a virtual meeting. Press 4 to be removed from our list.')}
@@ -339,7 +501,7 @@ router.post('/ivr-handler', async (req, res) => {
     ${say('Goodbye.')} <Hangup/>`));
 });
 
-// ─── IVR CALLBACK (spoken callback time) ──────────────────────────────────────
+// â”€â”€â”€ IVR CALLBACK (spoken callback time) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-callback', (req, res) => {
   const speech = req.body.SpeechResult || 'not provided';
   const fromPhone = req.body.To || req.body.From || '';
@@ -349,7 +511,7 @@ router.post('/ivr-callback', (req, res) => {
   return res.type('text/xml').send(twiml(`${say(`Thank you. We will call you back ${speech}. Goodbye.`)} <Hangup/>`));
 });
 
-// ─── IVR CALENDAR: ask day ─────────────────────────────────────────────────────
+// â”€â”€â”€ IVR CALENDAR: ask day â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-calendar-day', async (req, res) => {
   const speech = req.body.SpeechResult || '';
   const callSid = req.body.CallSid || 'unknown';
@@ -386,7 +548,7 @@ router.post('/ivr-calendar-day', async (req, res) => {
     ${say('Goodbye.')} <Hangup/>`));
 });
 
-// ─── IVR CALENDAR: pick slot ───────────────────────────────────────────────────
+// â”€â”€â”€ IVR CALENDAR: pick slot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-calendar-slot', (req, res) => {
   const digit = req.body.Digits;
   const callSid = req.body.CallSid || 'unknown';
@@ -421,7 +583,7 @@ router.post('/ivr-calendar-slot', (req, res) => {
   }
 });
 
-// ─── IVR CALENDAR: confirm email ──────────────────────────────────────────────
+// â”€â”€â”€ IVR CALENDAR: confirm email â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-calendar-email-confirm', async (req, res) => {
   const digit = req.body.Digits;
   const callSid = req.body.CallSid || 'unknown';
@@ -442,7 +604,7 @@ router.post('/ivr-calendar-email-confirm', async (req, res) => {
   await finishCalendarBooking(res, session, lead, lead?.email);
 });
 
-// ─── IVR CALENDAR: new email ──────────────────────────────────────────────────
+// â”€â”€â”€ IVR CALENDAR: new email â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/ivr-calendar-email-new', async (req, res) => {
   const speech = req.body.SpeechResult || '';
   const callSid = req.body.CallSid || 'unknown';
@@ -465,11 +627,25 @@ router.post('/ivr-calendar-email-new', async (req, res) => {
 
 async function finishCalendarBooking(res, session, lead, email) {
   const selectedSlot = session.dataObj.selectedSlot ? new Date(session.dataObj.selectedSlot) : null;
+  // Look up salesperson from the number that made the outbound call
+  let salespersonId = null;
+  try {
+    const calledFrom = session.lead_phone ? '' : ''; // outbound from number stored in session data
+    const fromNum = session.dataObj?.fromNumber || '';
+    if (fromNum) {
+      const last10 = fromNum.replace(/\D/g,'').slice(-10);
+      const pn = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%'+last10);
+      if (pn) {
+        const sp = db.prepare('SELECT id FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(pn.id);
+        if (sp) salespersonId = sp.id;
+      }
+    }
+  } catch(e) {}
   if (!selectedSlot) {
     return res.type('text/xml').send(twiml(`${say('Something went wrong. Please call back to schedule your meeting. Goodbye.')} <Hangup/>`));
   }
   try {
-    const event = await createCalendarEvent(lead || { name: session.lead_phone, phone: session.lead_phone, city: '', state: '', keyword: '' }, selectedSlot, email);
+    const event = await createCalendarEvent(lead || { name: session.lead_phone, phone: session.lead_phone, city: '', state: '', keyword: '' }, selectedSlot, email, salespersonId);
     const meetLink = event?.hangoutLink || event?.conferenceData?.entryPoints?.[0]?.uri || '';
     const confirmation = `Your meeting has been scheduled for ${formatSlotLabel(selectedSlot)}. ${email ? `A Google Meet link has been sent to ${email}.` : 'Check your calendar for the Google Meet link.'} Goodbye.`;
     return res.type('text/xml').send(twiml(`${say(confirmation)} <Hangup/>`));
@@ -479,7 +655,65 @@ async function finishCalendarBooking(res, session, lead, email) {
   }
 }
 
-// ─── EMAIL SCRAPER REFRESH ─────────────────────────────────────────────────────
+// â”€â”€â”€ RECORDING DONE (voicemail) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- INBOUND CALL HANDLER ---
+// Forward incoming calls to the salesperson assigned to the called number
+// Falls back to global transfer number if no salesperson is assigned
+router.post('/inbound', (req, res) => {
+  const calledNumber = req.body.To || ''; // the SignalWire number that was called
+  const callerNumber = req.body.From || 'unknown';
+  const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+  const globalTransfer = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
+
+  // Look up which phone number was called, find assigned salesperson
+  let forwardTo = globalTransfer;
+  let forwardName = 'staff';
+  try {
+    // Normalize called number for lookup
+    const calledNorm = calledNumber.replace(/\D/g, '').slice(-10);
+    const phoneEntry = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%' + calledNorm);
+    if (phoneEntry) {
+      // Find salesperson assigned to this phone number
+      const salesperson = db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id);
+      if (salesperson?.forward_number) {
+        forwardTo = salesperson.forward_number;
+        forwardName = salesperson.name;
+        console.log('[INBOUND] Called:', calledNumber, '-> routed to', salesperson.name, ':', forwardTo);
+      } else if (salesperson) {
+        console.log('[INBOUND] Called:', calledNumber, '-> salesperson', salesperson.name, 'has no forward number, using global');
+      } else {
+        console.log('[INBOUND] Called:', calledNumber, '-> no salesperson assigned, using global transfer');
+      }
+    }
+  } catch(e) {
+    console.error('[INBOUND] Lookup error:', e.message);
+  }
+
+  console.log('[INBOUND CALL] From:', callerNumber, '-> forwarding to', forwardTo, '(', forwardName, ')');
+  return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Please hold while we connect your call.</Say><Dial callerId="' + (req.body.To || '') + '" timeout="30" action="' + baseUrl + '/api/calls/inbound-status" method="POST">' + forwardTo + '</Dial><Say voice="alice">Sorry, no one is available. Please try again later.</Say></Response>');
+});
+
+// POST /api/calls/inbound-status -- called after dial completes
+router.post('/inbound-status', (req, res) => {
+  const status = req.body.DialCallStatus || 'unknown';
+  if (status !== 'completed') {
+    return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Sorry, no one is available. Please leave a message after the beep.</Say><Record maxLength="60"/></Response>');
+  }
+  return res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+});
+router.post('/recording-done', (req, res) => {
+  // Log voicemail outcome
+  const fromPhone = req.body.To || req.body.From || '';
+  const callSid = req.body.CallSid || '';
+  const lead = findLeadByPhone(fromPhone);
+  if (lead) {
+    db.prepare('INSERT INTO call_logs (lead_id, lead_name, lead_phone, scrape_id, call_sid, outcome) VALUES (?,?,?,?,?,?)')
+      .run(lead.id, lead.name, fromPhone, lead.scrape_id||null, callSid, 'voicemail_left');
+  }
+  res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">Thank you for your message. We will call you back shortly. Goodbye.</Say><Hangup/></Response>');
+});
+
+// â”€â”€â”€ EMAIL SCRAPER REFRESH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
   try {
     const leads = db.prepare('SELECT * FROM leads WHERE scrape_id = ? AND website != ""').all(req.params.scrapeId);
@@ -502,3 +736,11 @@ router.post('/refresh-emails/:scrapeId', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
+
+
+
+
+
+
+

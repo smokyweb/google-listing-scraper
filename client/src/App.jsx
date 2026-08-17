@@ -17,6 +17,19 @@ import ScrapeDetail from './pages/ScrapeDetail';
 import VoiceMessage from './pages/VoiceMessage';
 import Callbacks from './pages/Callbacks';
 import SMSInbox from './pages/SMSInbox';
+import SalesUsers from './pages/SalesUsers';
+import VoicemailDrop from './pages/VoicemailDrop';
+import ImportLeads from './pages/ImportLeads';
+import Dialer from './pages/Dialer';
+import EmailSenders from './pages/EmailSenders';
+import QuickEmail from './pages/QuickEmail';
+import Reports from './pages/Reports';
+import MyProfile from './pages/MyProfile';
+
+function SettingsOrProfile() {
+  const role = localStorage.getItem('gls_role') || 'admin';
+  return role === 'salesperson' ? <MyProfile /> : <Settings />;
+}
 
 function Layout({ children }) {
   return (
@@ -61,9 +74,17 @@ export default function App() {
       <Route path="/voice" element={<Layout><VoiceMessage /></Layout>} />
       <Route path="/callbacks" element={<Layout><Callbacks /></Layout>} />
       <Route path="/sms-inbox" element={<Layout><SMSInbox /></Layout>} />
+      <Route path="/sales-users" element={<Layout><SalesUsers /></Layout>} />
+      <Route path="/voicemail-drop" element={<Layout><VoicemailDrop /></Layout>} />
+      <Route path="/import" element={<Layout><ImportLeads /></Layout>} />
+      <Route path="/dialer" element={<Layout><Dialer /></Layout>} />
+      <Route path="/email-senders" element={<Layout><EmailSenders /></Layout>} />
+      <Route path="/quick-email" element={<Layout><QuickEmail /></Layout>} />
+      <Route path="/reports" element={<Layout><Reports /></Layout>} />
+      <Route path="/my-profile" element={<Layout><MyProfile /></Layout>} />
       <Route path="/phone-numbers" element={<Layout><PhoneNumbers /></Layout>} />
       <Route path="/calendar" element={<Layout><Calendar /></Layout>} />
-      <Route path="/settings" element={<Layout><Settings /></Layout>} />
+      <Route path="/settings" element={<Layout><SettingsOrProfile /></Layout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

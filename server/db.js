@@ -23,6 +23,7 @@ db.exec(`
     state TEXT NOT NULL,
     lead_count INTEGER DEFAULT 0,
     mock INTEGER DEFAULT 0,
+    next_page_token TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );
 
@@ -110,13 +111,114 @@ db.exec(`
     is_active INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS email_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sms_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sales_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    states TEXT DEFAULT '[]',
+    cities TEXT DEFAULT '[]',
+    phone_number_id INTEGER REFERENCES phone_numbers(id),
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS email_opens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    campaign_id INTEGER,
+    opened_at TEXT DEFAULT (datetime('now')),
+    ip TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS email_senders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    name TEXT,
+    is_default INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS call_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    lead_name TEXT,
+    lead_phone TEXT,
+    scrape_id INTEGER,
+    call_sid TEXT,
+    outcome TEXT DEFAULT 'initiated',
+    button_pressed TEXT,
+    duration_seconds INTEGER DEFAULT 0,
+    called_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS sms_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lead_id INTEGER,
+    message_sid TEXT,
+    status TEXT,
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 // Migrations — add columns to existing tables if they don't exist
 try { db.exec('ALTER TABLE leads ADD COLUMN scrape_id INTEGER REFERENCES scrapes(id)'); } catch(e) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN email_scraped INTEGER DEFAULT 0'); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN unsubscribed INTEGER DEFAULT 0"); } catch(e) {}
+try { db.exec("ALTER TABLE email_templates ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE sms_templates ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE voice_scripts ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN notes TEXT DEFAULT ''"); } catch(e) {}
+try { db.exec("ALTER TABLE scrapes ADD COLUMN next_page_token TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE scrapes ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE scrapes ADD COLUMN created_by_name TEXT DEFAULT 'Admin'"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_access_token TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN forward_number TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_refresh_token TEXT"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_token_expiry INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE sales_users ADD COLUMN gcal_email TEXT"); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN source TEXT DEFAULT 'scraped'"); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN status TEXT DEFAULT 'new'"); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN assigned_user_id INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN email_opens INTEGER DEFAULT 0"); } catch(e) {}
+try { db.exec("ALTER TABLE campaigns ADD COLUMN tracking_id TEXT"); } catch(e) {}
+
+// Seed Google Calendar OAuth from env vars if not already in DB
+const gcalKeys = [
+  ['google_calendar_client_id', process.env.GOOGLE_CALENDAR_CLIENT_ID],
+  ['google_calendar_client_secret', process.env.GOOGLE_CALENDAR_CLIENT_SECRET],
+  ['google_calendar_refresh_token', process.env.GOOGLE_CALENDAR_REFRESH_TOKEN],
+  ['gemini_api_key', process.env.GEMINI_API_KEY],
+  ['elevenlabs_api_key', process.env.ELEVENLABS_API_KEY],
+  ['elevenlabs_voice_id', process.env.ELEVENLABS_VOICE_ID],
+  ['signalwire_project_id', process.env.SIGNALWIRE_PROJECT_ID],
+  ['signalwire_token', process.env.SIGNALWIRE_TOKEN],
+  ['signalwire_space_url', process.env.SIGNALWIRE_SPACE_URL],
+  ['signalwire_phone_number', process.env.SIGNALWIRE_PHONE_NUMBER],
+  ['transfer_phone_number', process.env.TRANSFER_PHONE_NUMBER],
+  ['google_places_api_key', process.env.GOOGLE_PLACES_API_KEY],
+];
+const upsertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+for (const [key, val] of gcalKeys) {
+  if (val) upsertSetting.run(key, val);
+}
 
 // Seed default phone number from env if none exist
 const existingNumbers = db.prepare('SELECT COUNT(*) as count FROM phone_numbers').get();

@@ -1,18 +1,33 @@
-const router = require('express').Router();
+﻿const router = require('express').Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 
-// GET all scrapes (history)
+// GET all scrapes (history) â€” salespersons only see their own
 router.get('/', authMiddleware, (req, res) => {
-  const scrapes = db.prepare(`
-    SELECT s.*,
-      COUNT(l.id) as lead_count,
-      SUM(CASE WHEN l.email != '' AND l.email IS NOT NULL THEN 1 ELSE 0 END) as emails_found
-    FROM scrapes s
-    LEFT JOIN leads l ON l.scrape_id = s.id
-    GROUP BY s.id
-    ORDER BY s.created_at DESC
-  `).all();
+  const { filterUser } = req.query; // admin can pass ?filterUser=userId to filter
+  const isSalesperson = req.user?.role === 'salesperson';
+  const userId = req.user?.userId;
+
+  let where = '';
+  let params = [];
+  if (isSalesperson && userId) {
+    // Salesperson: only their scrapes
+    where = 'WHERE s.created_by_user_id = ?';
+    params = [userId];
+  } else if (filterUser) {
+    // Admin filtering by specific user
+    where = 'WHERE s.created_by_user_id = ?';
+    params = [parseInt(filterUser)];
+  }
+
+  const rawSort = req.query.sortBy || 'created_at';
+  const rawDir = req.query.sortDir || 'desc';
+  const allowedSort = { created_at: 's.created_at', name: 's.name', created_by_name: 's.created_by_name', lead_count: 'lead_count' };
+  const orderCol = allowedSort[rawSort] || 's.created_at';
+  const orderDir = rawDir === 'asc' ? 'ASC' : 'DESC';
+
+  const sql = `SELECT s.*, COUNT(l.id) as lead_count, SUM(CASE WHEN l.email != '' AND l.email IS NOT NULL THEN 1 ELSE 0 END) as emails_found FROM scrapes s LEFT JOIN leads l ON l.scrape_id = s.id ${where} GROUP BY s.id ORDER BY ${orderCol} ${orderDir}`;
+  const scrapes = db.prepare(sql).all(...params);
   res.json(scrapes);
 });
 
@@ -49,6 +64,15 @@ router.get('/:id/export', authMiddleware, (req, res) => {
   res.send(csv);
 });
 
+
+// PATCH /api/scrapes/:id/assign - assign scrape to a user
+router.patch('/:id/assign', authMiddleware, (req, res) => {
+  const { userId, userName } = req.body;
+  const { id } = req.params;
+  db.prepare('UPDATE scrapes SET created_by_user_id = ?, created_by_name = ? WHERE id = ?')
+    .run(userId || null, userName || 'Admin', id);
+  res.json({ success: true });
+});
 // DELETE a scrape and its leads
 router.delete('/:id', authMiddleware, (req, res) => {
   const { id } = req.params;
@@ -58,3 +82,5 @@ router.delete('/:id', authMiddleware, (req, res) => {
 });
 
 module.exports = router;
+
+
