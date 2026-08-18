@@ -52,11 +52,20 @@ const US_STATES = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','
 export default function SalesUsers() {
   const [users, setUsers] = useState([]);
   const [phoneNumbers, setPhoneNumbers] = useState([]);
+  // availableNumbers: numbers the server has confirmed are selectable for the open form
+  const [availableNumbers, setAvailableNumbers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState(null);
   const [form, setForm] = useState({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+
+  // Fetch available numbers from the server; pass excludeUserId when editing so
+  // the user's own currently-assigned number is included in the list.
+  const loadAvailable = (excludeUserId = null) => {
+    const qs = excludeUserId ? `?exclude_user_id=${excludeUserId}` : '';
+    apiFetch(`/phone-numbers/available${qs}`).then(setAvailableNumbers).catch(() => setAvailableNumbers([]));
+  };
 
   const load = () => {
     apiFetch('/sales-users').then(setUsers).catch(() => {});
@@ -64,9 +73,15 @@ export default function SalesUsers() {
   };
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setEditUser(null); setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' }); setShowAdd(true); };
+  const openAdd = () => {
+    setEditUser(null);
+    setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' });
+    setAvailableNumbers([]); // reset while loading
+    loadAvailable(null);     // fetch numbers not assigned to anyone
+    setShowAdd(true);
+    setMsg(null);
+  };
   const openEdit = (u) => {
-    // Set both editUser and form atomically to avoid stale closure issues
     setEditUser(u);
     setForm({
       name: u.name || '',
@@ -77,6 +92,8 @@ export default function SalesUsers() {
       phone_number_id: u.phone_number_id ? String(u.phone_number_id) : '',
       forward_number: u.forward_number || '',
     });
+    setAvailableNumbers([]); // reset while loading
+    loadAvailable(u.id);     // fetch unassigned + this user's own number
     setShowAdd(true);
     setMsg(null);
   };
@@ -93,6 +110,7 @@ export default function SalesUsers() {
       else await apiFetch('/sales-users', { method: 'POST', body: JSON.stringify(body) });
       setMsg({ type: 'success', text: editUser ? 'User updated' : 'User added' });
       setShowAdd(false);
+      setAvailableNumbers([]);
       load();
     } catch (err) {
       // Surface API error messages (including phone number conflicts) directly to the user
@@ -129,14 +147,10 @@ export default function SalesUsers() {
               <div><label className="text-xs text-gray-400">Assigned Phone Number</label>
                 <select value={form.phone_number_id} onChange={e=>setForm({...form,phone_number_id:e.target.value})} className={inp}>
                   <option value="">None (use default)</option>
-                  {phoneNumbers
-                    .filter(n => {
-                      // Show the number if: unassigned, or assigned to the user currently being edited
-                      if (!n.assigned_to_id) return true;
-                      if (editUser && String(n.assigned_to_id) === String(editUser.id)) return true;
-                      return false;
-                    })
-                    .map(n => <option key={n.id} value={n.id}>{n.label} — {n.number}</option>)}
+                  {/* availableNumbers comes from server-side /phone-numbers/available,
+                      which excludes numbers held by ANY user (active or inactive),
+                      while including the current user's own number when editing. */}
+                  {availableNumbers.map(n => <option key={n.id} value={String(n.id)}>{n.label} — {n.number}</option>)}
                 </select>
                 {phoneNumbers.some(n => n.assigned_to_id && !(editUser && String(n.assigned_to_id) === String(editUser.id))) && (
                   <p className="text-xs text-gray-600 mt-0.5">Numbers assigned to other salespeople are hidden</p>

@@ -16,6 +16,45 @@ router.get('/my', authMiddleware, (req, res) => {
   res.json(def || null);
 });
 
+// GET /api/phone-numbers/available — returns only unassigned SignalWire numbers,
+// plus the number currently assigned to `exclude_user_id` (used for edit forms).
+// Checks ALL users regardless of is_active, so inactive-user assignments are respected.
+router.get('/available', authMiddleware, (req, res) => {
+  const { exclude_user_id } = req.query;
+
+  let numbers;
+  if (exclude_user_id) {
+    // Return numbers that have no owner at all, OR are owned by the editing user
+    numbers = db.prepare(`
+      SELECT pn.*
+      FROM phone_numbers pn
+      WHERE pn.provider = 'signalwire'
+        AND (
+          NOT EXISTS (
+            SELECT 1 FROM sales_users su WHERE su.phone_number_id = pn.id
+          )
+          OR EXISTS (
+            SELECT 1 FROM sales_users su WHERE su.phone_number_id = pn.id AND su.id = ?
+          )
+        )
+      ORDER BY pn.is_default DESC, pn.created_at ASC
+    `).all(exclude_user_id);
+  } else {
+    // Return only completely unassigned numbers (for Add User form)
+    numbers = db.prepare(`
+      SELECT pn.*
+      FROM phone_numbers pn
+      WHERE pn.provider = 'signalwire'
+        AND NOT EXISTS (
+          SELECT 1 FROM sales_users su WHERE su.phone_number_id = pn.id
+        )
+      ORDER BY pn.is_default DESC, pn.created_at ASC
+    `).all();
+  }
+
+  res.json(numbers);
+});
+
 // GET phone numbers - salesperson only sees their assigned number
 router.get('/', authMiddleware, (req, res) => {
   const isSalesperson = req.user?.role === 'salesperson';
@@ -29,11 +68,12 @@ router.get('/', authMiddleware, (req, res) => {
     // No assigned number - return empty
     return res.json([]);
   }
-  // Include assignment info so the frontend can exclude taken numbers from dropdowns
+  // Include assignment info for all users (active or inactive) so the frontend
+  // can accurately display who holds each number.
   const numbers = db.prepare(`
-    SELECT pn.*, su.id as assigned_to_id, su.name as assigned_to_name
+    SELECT pn.*, su.id as assigned_to_id, su.name as assigned_to_name, su.is_active as assigned_to_active
     FROM phone_numbers pn
-    LEFT JOIN sales_users su ON su.phone_number_id = pn.id AND su.is_active = 1
+    LEFT JOIN sales_users su ON su.phone_number_id = pn.id
     WHERE pn.provider = 'signalwire'
     ORDER BY pn.is_default DESC, pn.created_at ASC
   `).all();
