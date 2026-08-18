@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../api';
 
-export default function EditLeadModal({ lead, onClose, onSave }) {
+export default function EditLeadModal({ lead, onClose, onSave, onSaved }) {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -38,18 +38,15 @@ export default function EditLeadModal({ lead, onClose, onSave }) {
     setLoading(true);
     setError('');
     try {
-      const response = await apiFetch(`/leads/${lead.id}`, {
+      // apiFetch returns parsed JSON; throws on non-2xx responses
+      await apiFetch(`/leads/${lead.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      if (response.ok) {
-        onSave(response.lead); // Assuming API returns the updated lead
-        onClose();
-      } else {
-        const data = await response.json();
-        setError(data.error || 'Failed to update lead');
-      }
+      // Support both onSaved (new) and onSave (legacy) prop names
+      if (onSaved) onSaved();
+      else if (onSave) onSave();
+      onClose();
     } catch (err) {
       setError(err.message || 'Network error');
     } finally {

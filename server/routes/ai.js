@@ -1,4 +1,18 @@
 const router = require('express').Router();
+
+/**
+ * Strip markdown code fences from AI-generated output.
+ * Handles: ```html\n...\n```, ```\n...\n```, and stray prose wrappers.
+ */
+function stripMarkdownFences(text) {
+  let s = text.trim();
+  // Remove any code fence block: ```lang\n...\n``` (possibly with trailing whitespace)
+  const fenced = s.match(/^```[\w]*\r?\n([\s\S]*?)\r?\n```\s*$/);
+  if (fenced) return fenced[1].trim();
+  // Also handle inline single-line fences (unlikely but safe)
+  s = s.replace(/^`{3}[\w]*\r?\n?/, '').replace(/\r?\n?`{3}\s*$/, '').trim();
+  return s;
+}
 const { authMiddleware } = require('../middleware/auth');
 const db = require('../db');
 
@@ -46,8 +60,12 @@ router.post('/generate', authMiddleware, async (req, res) => {
     }
 
     const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    res.json({ script: text.trim() });
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    if (!rawText.trim()) {
+      return res.status(502).json({ error: 'AI returned an empty response. Try rephrasing your prompt.' });
+    }
+    const script = stripMarkdownFences(rawText);
+    res.json({ script });
   } catch (err) {
     console.error('AI generate error:', err.message);
     res.status(500).json({ error: err.message });

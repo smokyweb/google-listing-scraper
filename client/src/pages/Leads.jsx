@@ -5,7 +5,7 @@ import LeadsTable from '../components/LeadsTable';
 import EditLeadModal from '../components/EditLeadModal';
 
 function AddLeadModal({ scrapes, onClose, onSaved }) {
-  const [form, setForm] = useState({ first_name: '', last_name: '', phone: '', email: '', website: '', address: '', city: '', state: '', keyword: '', scrape_id: '' });
+  const [form, setForm] = useState({ first_name: '', last_name: '', company: '', phone: '', email: '', website: '', address: '', city: '', state: '', keyword: '', scrape_id: '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const handle = async (e) => {
