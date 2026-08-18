@@ -31,6 +31,7 @@ function AddLeadModal({ scrapes, onClose, onSaved }) {
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs text-gray-400">First Name *</label><input value={form.first_name} onChange={f('first_name')} required className={inp} /></div>
             <div><label className="text-xs text-gray-400">Last Name *</label><input value={form.last_name} onChange={f('last_name')} required className={inp} /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-400">Company</label><input value={form.company} onChange={f('company')} className={inp} placeholder="Optional" /></div>
             <div><label className="text-xs text-gray-400">Phone</label><input value={form.phone} onChange={f('phone')} className={inp} /></div>
             <div><label className="text-xs text-gray-400">Email</label><input value={form.email} onChange={f('email')} type="email" className={inp} /></div>
             <div className="col-span-2"><label className="text-xs text-gray-400">Website</label><input value={form.website} onChange={f('website')} className={inp} /></div>

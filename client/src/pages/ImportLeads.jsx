@@ -4,6 +4,7 @@ import { apiFetch } from '../api';
 const EXPECTED_FIELDS = [
   { key: 'first_name', label: 'First Name', required: true },
   { key: 'last_name', label: 'Last Name', required: true },
+  { key: 'company', label: 'Company' },
   { key: 'phone', label: 'Phone' },
   { key: 'email', label: 'Email' },
   { key: 'website', label: 'Website' },
@@ -44,6 +45,7 @@ function autoMap(csvHeaders) {
     city: ['city', 'town'],
     state: ['state', 'province', 'region', 'st'],
     keyword: ['keyword', 'category', 'type', 'industry'],
+    company: ['company', 'company name', 'business', 'business name', 'organization', 'org'],
   };
   for (const csvHeader of csvHeaders) {
     const lower = csvHeader.toLowerCase().trim();
@@ -140,8 +142,8 @@ export default function ImportLeads() {
 
   const downloadTemplate = () => {
     const csv = EXPECTED_FIELDS.map(f => f.label).join(',') + '\n' +
-      'John,Smith,555-123-4567,info@acmeplumbing.com,https://acmeplumbing.com,123 Main St,Austin,plumber\n' +
-      'Jane,Doe,555-987-6543,contact@bestelectric.com,https://bestelectric.com,456 Oak Ave,Dallas,electrician';
+      'John,Smith,Acme Plumbing,555-123-4567,info@acmeplumbing.com,https://acmeplumbing.com,123 Main St,Austin,TX,plumber\n' +
+      'Jane,Doe,Best Electric LLC,555-987-6543,contact@bestelectric.com,https://bestelectric.com,456 Oak Ave,Dallas,TX,electrician';
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
     a.download = 'leads_import_template.csv'; a.click();
