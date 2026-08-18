@@ -65,15 +65,26 @@ router.patch('/:id', authMiddleware, (req, res) => {
   const { name, first_name, last_name, phone, email, website, address, city, state, keyword, unsubscribed, status, assigned_user_id, notes } = req.body;
   const existing = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Not found' });
-  const fullName = name ?? `${first_name??existing.first_name||''} ${last_name??existing.last_name||''}`.trim() || existing.name;
+  const fn = (first_name != null ? first_name : existing.first_name) || '';
+  const ln = (last_name != null ? last_name : existing.last_name) || '';
+  const fullName = name != null ? name : ((fn + ' ' + ln).trim() || existing.name);
   db.prepare(`UPDATE leads SET name=?, first_name=?, last_name=?, phone=?, email=?, website=?, address=?, city=?, state=?, keyword=?, unsubscribed=?, status=?, assigned_user_id=?, notes=? WHERE id=?`)
-    .run(fullName, first_name??existing.first_name||'', last_name??existing.last_name||'',
-         phone??existing.phone, email??existing.email, website??existing.website,
-         address??existing.address, city??existing.city, state??existing.state, keyword??existing.keyword,
-         unsubscribed??existing.unsubscribed, status??existing.status??'new',
-         assigned_user_id!==undefined ? assigned_user_id : existing.assigned_user_id,
-         notes!==undefined ? notes : (existing.notes||''),
-         req.params.id);
+    .run(
+      fullName,
+      fn, ln,
+      phone != null ? phone : existing.phone,
+      email != null ? email : existing.email,
+      website != null ? website : existing.website,
+      address != null ? address : existing.address,
+      city != null ? city : existing.city,
+      state != null ? state : existing.state,
+      keyword != null ? keyword : existing.keyword,
+      unsubscribed != null ? unsubscribed : existing.unsubscribed,
+      status != null ? status : (existing.status || 'new'),
+      assigned_user_id !== undefined ? assigned_user_id : existing.assigned_user_id,
+      notes !== undefined ? notes : (existing.notes || ''),
+      req.params.id
+    );
   res.json({ success: true });
 });
 
