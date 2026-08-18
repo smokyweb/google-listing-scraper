@@ -71,12 +71,18 @@ export default function ImportLeads() {
   const [salesUsers, setSalesUsers] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [loadingSalesUsers, setLoadingSalesUsers] = useState(false);
 
   useEffect(() => {
     const role = localStorage.getItem('gls_role') || 'admin';
-    setIsAdmin(role === 'admin');
-    if (isAdmin) {
-      apiFetch('/sales-users').then(data => { setSalesUsers(data); }).catch(() => {});
+    const adminUser = role === 'admin';
+    setIsAdmin(adminUser);
+    if (adminUser) {
+      setLoadingSalesUsers(true);
+      apiFetch('/sales-users')
+        .then(data => { setSalesUsers(data); })
+        .catch(() => {})
+        .finally(() => setLoadingSalesUsers(false));
     }
   }, []);
 
@@ -239,13 +245,20 @@ export default function ImportLeads() {
           {isAdmin && (
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <label className="block text-sm text-gray-400 mb-2">Assign to Salesperson (optional)</label>
-              <select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}
-                className="w-full max-w-sm px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
-                <option value="">None — leave unassigned</option>
-                {salesUsers.filter(u => u.is_active).map(u => (
-                  <option key={u.id} value={u.id}>{u.name} — {u.email}</option>
-                ))}
-              </select>
+              {loadingSalesUsers ? (
+                <p className="text-sm text-gray-500">Loading salespeople…</p>
+              ) : (
+                <select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}
+                  className="w-full max-w-sm px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
+                  <option value="">None — leave unassigned</option>
+                  {salesUsers.filter(u => u.is_active).map(u => (
+                    <option key={u.id} value={u.id}>{u.name} — {u.email}</option>
+                  ))}
+                  {salesUsers.filter(u => u.is_active).length === 0 && (
+                    <option disabled>No active salespeople found</option>
+                  )}
+                </select>
+              )}
             </div>
           )}
 
