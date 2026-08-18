@@ -21,16 +21,21 @@ router.post('/', authMiddleware, (req, res) => {
   const { name, email, password, states = [], cities = [], phone_number_id, forward_number } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required' });
 
-  // Enforce phone number exclusivity: check if this number is already assigned to another user
-  if (phone_number_id) {
-    const conflict = db.prepare('SELECT id, name FROM sales_users WHERE phone_number_id = ?').get(phone_number_id);
+  // Normalize phone_number_id: must be a positive integer or null
+  const phoneId = phone_number_id ? parseInt(phone_number_id, 10) : null;
+  if (phoneId) {
+    // Validate the phone number exists in the phone_numbers table
+    const phoneRow = db.prepare('SELECT id FROM phone_numbers WHERE id = ?').get(phoneId);
+    if (!phoneRow) return res.status(400).json({ error: 'Invalid phone_number_id: phone number does not exist.' });
+    // Enforce exclusivity: reject if ANY user (active or inactive) already holds this number
+    const conflict = db.prepare('SELECT id, name FROM sales_users WHERE phone_number_id = ?').get(phoneId);
     if (conflict) return res.status(409).json({ error: `Phone number is already assigned to ${conflict.name}. Each phone number may only be assigned to one salesperson.` });
   }
 
   try {
     const r = db.prepare('INSERT INTO sales_users (name, email, password_hash, states, cities, phone_number_id, forward_number) VALUES (?,?,?,?,?,?,?)')
-      .run(name, email, hashPassword(password), JSON.stringify(states), JSON.stringify(cities), phone_number_id || null, forward_number || null);
-    res.status(201).json({ id: r.lastInsertRowid, name, email, states, cities, phone_number_id, forward_number });
+      .run(name, email, hashPassword(password), JSON.stringify(states), JSON.stringify(cities), phoneId, forward_number || null);
+    res.status(201).json({ id: r.lastInsertRowid, name, email, states, cities, phone_number_id: phoneId, forward_number });
   } catch (e) {
     if (e.message.includes('UNIQUE') && e.message.includes('phone_number_id')) return res.status(409).json({ error: 'Phone number is already assigned to another salesperson.' });
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
@@ -40,19 +45,34 @@ router.post('/', authMiddleware, (req, res) => {
 
 router.patch('/:id', authMiddleware, (req, res) => {
   const { name, email, password, states, cities, phone_number_id, is_active, forward_number } = req.body;
-  const existing = db.prepare('SELECT * FROM sales_users WHERE id=?').get(req.params.id);
+  const userId = parseInt(req.params.id, 10);
+  const existing = db.prepare('SELECT * FROM sales_users WHERE id=?').get(userId);
   if (!existing) return res.status(404).json({ error: 'Not found' });
   const pwHash = password ? hashPassword(password) : existing.password_hash;
-  // Validate phone_number_id exists (may have been deleted during sync)
-  let validPhoneId = phone_number_id !== undefined ? (phone_number_id || null) : existing.phone_number_id;
-  if (validPhoneId) {
+
+  // Normalize phone_number_id: always compare as integers to avoid type-mismatch bugs
+  // (body sends strings, SQLite stores integers).
+  let validPhoneId;
+  if (phone_number_id !== undefined) {
+    // Explicit value sent: normalize to int or null
+    validPhoneId = phone_number_id ? (parseInt(phone_number_id, 10) || null) : null;
+  } else {
+    // Not sent at all: keep existing assignment
+    validPhoneId = existing.phone_number_id ? parseInt(existing.phone_number_id, 10) : null;
+  }
+
+  // Validate phone_number_id exists in phone_numbers (guards against deleted numbers)
+  if (validPhoneId !== null) {
     const phoneExists = db.prepare('SELECT id FROM phone_numbers WHERE id = ?').get(validPhoneId);
     if (!phoneExists) validPhoneId = null;
   }
 
-  // Enforce phone number exclusivity: new assignment must not be taken by another user
-  if (validPhoneId !== null && validPhoneId !== existing.phone_number_id) {
-    const conflict = db.prepare('SELECT id, name FROM sales_users WHERE phone_number_id = ? AND id != ?').get(validPhoneId, req.params.id);
+  // Enforce exclusivity: only check conflict when assigning a DIFFERENT number.
+  // Compare as integers to avoid "5" !== 5 false mismatches.
+  const existingPhoneId = existing.phone_number_id ? parseInt(existing.phone_number_id, 10) : null;
+  if (validPhoneId !== null && validPhoneId !== existingPhoneId) {
+    // Reject if any user (active or inactive) already holds this number
+    const conflict = db.prepare('SELECT id, name FROM sales_users WHERE phone_number_id = ? AND id != ?').get(validPhoneId, userId);
     if (conflict) return res.status(409).json({ error: `Phone number is already assigned to ${conflict.name}. Each phone number may only be assigned to one salesperson.` });
   }
 
@@ -67,7 +87,7 @@ router.patch('/:id', authMiddleware, (req, res) => {
         validPhoneId,
         is_active !== undefined ? is_active : existing.is_active,
         forward_number !== undefined ? (forward_number || null) : existing.forward_number,
-        req.params.id
+        userId
       );
     res.json({ success: true });
   } catch (e) {

@@ -237,6 +237,38 @@ module.exports = db;
 
 try { db.exec("ALTER TABLE leads ADD COLUMN first_name TEXT DEFAULT ''"); } catch(e) {}
 try { db.exec("ALTER TABLE leads ADD COLUMN last_name TEXT DEFAULT ''"); } catch(e) {}
+try { db.exec("ALTER TABLE leads ADD COLUMN company TEXT DEFAULT ''"); } catch(e) {}
 
-// Enforce phone number exclusivity: each SignalWire number may only be assigned to one salesperson
-try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_users_phone_number_id ON sales_users(phone_number_id) WHERE phone_number_id IS NOT NULL"); } catch(e) {}
+// ── Phone number exclusivity migration ─────────────────────────────────────
+// Step 1: Resolve any existing duplicate phone_number_id assignments
+// BEFORE creating the unique index. Keep the row with the lowest id and
+// NULL out later duplicates. Log a clear warning for every released row.
+const _phoneDupes = db.prepare(`
+  SELECT phone_number_id, MIN(id) AS keep_id
+  FROM sales_users
+  WHERE phone_number_id IS NOT NULL
+  GROUP BY phone_number_id
+  HAVING COUNT(*) > 1
+`).all();
+if (_phoneDupes.length > 0) {
+  const _releaseDupe = db.prepare('UPDATE sales_users SET phone_number_id = NULL WHERE phone_number_id = ? AND id != ?');
+  for (const { phone_number_id: _pid, keep_id: _keepId } of _phoneDupes) {
+    const _rows = db.prepare('SELECT id, name FROM sales_users WHERE phone_number_id = ? AND id != ?').all(_pid, _keepId);
+    for (const _r of _rows) {
+      console.warn(
+        `[DB MIGRATION] WARNING: Duplicate phone_number_id=${_pid} found on sales_users.id=${_r.id} (${_r.name}). ` +
+        `Releasing assignment (setting to NULL). Kept on sales_users.id=${_keepId}.`
+      );
+    }
+    _releaseDupe.run(_pid, _keepId);
+  }
+}
+
+// Step 2: Create the unique partial index. Do NOT silently swallow errors —
+// if index creation fails after duplicate resolution, something is seriously wrong.
+try {
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_users_phone_number_id ON sales_users(phone_number_id) WHERE phone_number_id IS NOT NULL');
+} catch (e) {
+  console.error('[DB MIGRATION] CRITICAL: Failed to create unique index on sales_users(phone_number_id):', e.message);
+  throw e; // re-throw so the process fails loudly rather than running with a broken constraint
+}

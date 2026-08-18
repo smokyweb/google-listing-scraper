@@ -60,11 +60,11 @@ export default function SalesUsers() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  // Fetch available numbers from the server; pass excludeUserId when editing so
-  // the user's own currently-assigned number is included in the list.
-  const loadAvailable = (excludeUserId = null) => {
-    const qs = excludeUserId ? `?exclude_user_id=${excludeUserId}` : '';
-    apiFetch(`/phone-numbers/available${qs}`).then(setAvailableNumbers).catch(() => setAvailableNumbers([]));
+  // Fetch available numbers from the server: always returns only numbers with
+  // ZERO owners (active or inactive). The current user's own number is never
+  // included here — it is displayed separately as a read-only assignment.
+  const loadAvailable = () => {
+    apiFetch('/phone-numbers/available').then(setAvailableNumbers).catch(() => setAvailableNumbers([]));
   };
 
   const load = () => {
@@ -77,7 +77,7 @@ export default function SalesUsers() {
     setEditUser(null);
     setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' });
     setAvailableNumbers([]); // reset while loading
-    loadAvailable(null);     // fetch numbers not assigned to anyone
+    loadAvailable();         // fetch only numbers with no owner
     setShowAdd(true);
     setMsg(null);
   };
@@ -89,11 +89,12 @@ export default function SalesUsers() {
       password: '',
       states: (() => { try { return JSON.parse(u.states || '[]'); } catch { return []; } })(),
       cities: '',
+      // Keep current assignment ID so saving without changes preserves it.
       phone_number_id: u.phone_number_id ? String(u.phone_number_id) : '',
       forward_number: u.forward_number || '',
     });
     setAvailableNumbers([]); // reset while loading
-    loadAvailable(u.id);     // fetch unassigned + this user's own number
+    loadAvailable();         // fetch only numbers with no owner (never the current user's)
     setShowAdd(true);
     setMsg(null);
   };
@@ -144,16 +145,49 @@ export default function SalesUsers() {
               <div><label className="text-xs text-gray-400">Name *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required className={inp} /></div>
               <div><label className="text-xs text-gray-400">Email *</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required className={inp} /></div>
               <div><label className="text-xs text-gray-400">{editUser ? 'New Password (leave blank to keep)' : 'Password *'}</label><input type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required={!editUser} className={inp} /></div>
-              <div><label className="text-xs text-gray-400">Assigned Phone Number</label>
-                <select value={form.phone_number_id} onChange={e=>setForm({...form,phone_number_id:e.target.value})} className={inp}>
-                  <option value="">None (use default)</option>
-                  {/* availableNumbers comes from server-side /phone-numbers/available,
-                      which excludes numbers held by ANY user (active or inactive),
-                      while including the current user's own number when editing. */}
-                  {availableNumbers.map(n => <option key={n.id} value={String(n.id)}>{n.label} — {n.number}</option>)}
-                </select>
-                {phoneNumbers.some(n => n.assigned_to_id && !(editUser && String(n.assigned_to_id) === String(editUser.id))) && (
-                  <p className="text-xs text-gray-600 mt-0.5">Numbers assigned to other salespeople are hidden</p>
+              <div>
+                <label className="text-xs text-gray-400">Assigned Phone Number</label>
+                {/* When editing a user who already has a number, display it as a
+                    read-only current assignment. It must NOT appear as a selectable
+                    option — only numbers with zero owners are offered in the dropdown. */}
+                {editUser && editUser.phone_number_id && form.phone_number_id === String(editUser.phone_number_id) ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg">
+                      <span className="text-sm text-white flex-1">
+                        📞 {phoneNumbers.find(n => n.id === editUser.phone_number_id)?.label || 'Unknown'}
+                        {' — '}
+                        {phoneNumbers.find(n => n.id === editUser.phone_number_id)?.number || ''}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setForm({ ...form, phone_number_id: '' })}
+                        className="text-xs text-red-400 hover:text-red-300 shrink-0"
+                        title="Remove phone assignment"
+                      >✕ Remove</button>
+                    </div>
+                    <p className="text-xs text-gray-500">Current assignment (read-only). Click ✕ Remove to release it, or pick a different number below.</p>
+                    {availableNumbers.length > 0 && (
+                      <select
+                        value=""
+                        onChange={e => e.target.value && setForm({ ...form, phone_number_id: e.target.value })}
+                        className={inp}
+                      >
+                        <option value="">— Change to a different number —</option>
+                        {availableNumbers.map(n => <option key={n.id} value={String(n.id)}>{n.label} — {n.number}</option>)}
+                      </select>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <select value={form.phone_number_id} onChange={e => setForm({ ...form, phone_number_id: e.target.value })} className={inp}>
+                      <option value="">None (use default)</option>
+                      {/* Only numbers with zero owners are shown here */}
+                      {availableNumbers.map(n => <option key={n.id} value={String(n.id)}>{n.label} — {n.number}</option>)}
+                    </select>
+                    {phoneNumbers.some(n => n.assigned_to_id) && (
+                      <p className="text-xs text-gray-600 mt-0.5">Numbers assigned to other salespeople are not shown</p>
+                    )}
+                  </>
                 )}
               </div>
               <div><label className="text-xs text-gray-400">Forward Incoming Calls To</label>

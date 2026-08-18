@@ -5,6 +5,7 @@ export default function EditLeadModal({ lead, onClose, onSave }) {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
+    company: '',
     phone: '',
     email: '',
     address: '',
@@ -18,6 +19,7 @@ export default function EditLeadModal({ lead, onClose, onSave }) {
       setFormData({
         first_name: lead.first_name || '',
         last_name: lead.last_name || '',
+        company: lead.company || '',
         phone: lead.phone || '',
         email: lead.email || '',
         address: lead.address || '',
@@ -72,6 +74,11 @@ export default function EditLeadModal({ lead, onClose, onSave }) {
               <input type="text" id="last_name" name="last_name" value={formData.last_name} onChange={handleChange}
                 className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500" />
             </div>
+          </div>
+          <div>
+            <label htmlFor="company" className="block text-sm font-medium text-gray-300 mb-1">Company <span className="text-gray-500 font-normal">(optional)</span></label>
+            <input type="text" id="company" name="company" value={formData.company} onChange={handleChange}
+              className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500" />
           </div>
           <div>
             <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-1">Phone</label>
