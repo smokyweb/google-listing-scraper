@@ -22,6 +22,11 @@ RUN npm prune --production
 ENV NODE_ENV=production
 ENV PORT=3001
 
+# Persistent data directory - mount this volume to preserve data across deployments
+# docker run -v /root/listing-scraper-data:/app/data ...
+# or in Coolify: set persistent storage mount path to /app/data
+VOLUME ["/app/data"]
+
 EXPOSE 3001
 
 CMD ["node", "server/index.js"]
