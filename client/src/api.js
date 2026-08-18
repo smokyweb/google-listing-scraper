@@ -63,3 +63,23 @@ export async function verifyToken() {
     return false;
   }
 }
+
+/**
+ * Returns the current authenticated user's role and info from the JWT via /auth/verify.
+ * More reliable than reading localStorage directly (avoids stale gls_role values).
+ * Returns { role: 'admin'|'salesperson'|null, user: object|null }
+ */
+export async function getCurrentUser() {
+  const token = getToken();
+  if (!token) return { role: null, user: null };
+  try {
+    const res = await fetch(`${API_BASE}/auth/verify`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!data.valid) return { role: null, user: null };
+    return { role: data.role || null, user: data.user || null };
+  } catch {
+    return { role: null, user: null };
+  }
+}

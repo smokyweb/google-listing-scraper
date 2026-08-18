@@ -7,7 +7,15 @@ function hashPassword(pwd) {
   return crypto.createHash('sha256').update(pwd + 'gls-salt-2026').digest('hex');
 }
 
-router.get('/', authMiddleware, (req, res) => {
+// Admin-only middleware: only admin tokens may manage the sales-user list.
+function adminOnly(req, res, next) {
+  if (req.user?.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden: admin access required' });
+  }
+  next();
+}
+
+router.get('/', authMiddleware, adminOnly, (req, res) => {
   const users = db.prepare(`
     SELECT u.*, pn.number as phone_number_label
     FROM sales_users u
@@ -17,7 +25,7 @@ router.get('/', authMiddleware, (req, res) => {
   res.json(users);
 });
 
-router.post('/', authMiddleware, (req, res) => {
+router.post('/', authMiddleware, adminOnly, (req, res) => {
   const { name, email, password, states = [], cities = [], phone_number_id, forward_number } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required' });
 
@@ -43,7 +51,7 @@ router.post('/', authMiddleware, (req, res) => {
   }
 });
 
-router.patch('/:id', authMiddleware, (req, res) => {
+router.patch('/:id', authMiddleware, adminOnly, (req, res) => {
   const { name, email, password, states, cities, phone_number_id, is_active, forward_number } = req.body;
   const userId = parseInt(req.params.id, 10);
   const existing = db.prepare('SELECT * FROM sales_users WHERE id=?').get(userId);
@@ -97,7 +105,7 @@ router.patch('/:id', authMiddleware, (req, res) => {
   }
 });
 
-router.delete('/:id', authMiddleware, (req, res) => {
+router.delete('/:id', authMiddleware, adminOnly, (req, res) => {
   db.prepare('DELETE FROM sales_users WHERE id=?').run(req.params.id);
   res.json({ success: true });
 });

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { apiFetch } from '../api';
+import { useState, useEffect, useCallback } from 'react';
+import { apiFetch, getCurrentUser } from '../api';
 
 const EXPECTED_FIELDS = [
   { key: 'first_name', label: 'First Name', required: true },
@@ -72,21 +72,44 @@ export default function ImportLeads() {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [isAdmin, setIsAdmin] = useState(false);
   const [loadingSalesUsers, setLoadingSalesUsers] = useState(false);
+  const [salesUsersError, setSalesUsersError] = useState(null);
 
-  useEffect(() => {
-    const role = localStorage.getItem('gls_role') || 'admin';
-    const adminUser = role === 'admin';
-    setIsAdmin(adminUser);
-    if (adminUser) {
-      setLoadingSalesUsers(true);
-      apiFetch('/sales-users')
-        .then(data => { setSalesUsers(data); })
-        .catch(() => {})
-        .finally(() => setLoadingSalesUsers(false));
+  // Fetch sales users — callable any time we need a fresh list.
+  const fetchSalesUsers = useCallback(async () => {
+    setLoadingSalesUsers(true);
+    setSalesUsersError(null);
+    try {
+      const data = await apiFetch('/sales-users');
+      setSalesUsers(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setSalesUsersError(err.message || 'Failed to load salespeople');
+    } finally {
+      setLoadingSalesUsers(false);
     }
   }, []);
 
+  // On mount: verify role from JWT (authoritative) and pre-fetch sales users if admin.
+  useEffect(() => {
+    getCurrentUser().then(({ role }) => {
+      const adminUser = role === 'admin';
+      setIsAdmin(adminUser);
+      if (adminUser) fetchSalesUsers();
+    });
+  }, [fetchSalesUsers]);
+
   const loadScrapes = () => apiFetch('/scrapes').then(setScrapes).catch(() => {});
+
+  // When entering the map step, ensure sales users are loaded if we're admin
+  // (guards against the race where the initial mount fetch happened before auth settled).
+  const enterMapStep = (parsed, autoMapped) => {
+    setCsvData(parsed);
+    setMapping(autoMapped);
+    loadScrapes();
+    setStep('map');
+    if (isAdmin && salesUsers.length === 0 && !loadingSalesUsers) {
+      fetchSalesUsers();
+    }
+  };
 
   const handleFile = (file) => {
     if (!file) return;
@@ -94,11 +117,7 @@ export default function ImportLeads() {
     reader.onload = (e) => {
       const parsed = parseCSV(e.target.result);
       if (parsed.headers.length === 0) return alert('Could not parse CSV file');
-      setCsvData(parsed);
-      const autoMapped = autoMap(parsed.headers);
-      setMapping(autoMapped);
-      loadScrapes();
-      setStep('map');
+      enterMapStep(parsed, autoMap(parsed.headers));
     };
     reader.readAsText(file);
   };
@@ -122,7 +141,7 @@ export default function ImportLeads() {
             if (idx >= 0) lead[field] = row[idx] || '';
           }
           if (selectedScrapeId) lead.scrape_id = parseInt(selectedScrapeId);
-          if (selectedUserId) lead.assigned_user_id = parseInt(selectedUserId);
+          if (selectedUserId) lead.assigned_user_id = parseInt(selectedUserId, 10);
           return lead;
         })
         .filter(l => l.first_name || l.last_name);
@@ -247,6 +266,11 @@ export default function ImportLeads() {
               <label className="block text-sm text-gray-400 mb-2">Assign to Salesperson (optional)</label>
               {loadingSalesUsers ? (
                 <p className="text-sm text-gray-500">Loading salespeople…</p>
+              ) : salesUsersError ? (
+                <div className="flex items-center gap-3">
+                  <p className="text-sm text-red-400">⚠ {salesUsersError}</p>
+                  <button onClick={fetchSalesUsers} className="text-xs text-blue-400 hover:text-blue-300 underline">Retry</button>
+                </div>
               ) : (
                 <select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)}
                   className="w-full max-w-sm px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500">
@@ -258,6 +282,9 @@ export default function ImportLeads() {
                     <option disabled>No active salespeople found</option>
                   )}
                 </select>
+              )}
+              {!loadingSalesUsers && !salesUsersError && salesUsers.length > 0 && (
+                <button onClick={fetchSalesUsers} className="mt-1 text-xs text-gray-500 hover:text-gray-400 underline">↻ Refresh list</button>
               )}
             </div>
           )}
