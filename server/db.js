@@ -236,5 +236,7 @@ module.exports = db;
 
 
 try { db.exec("ALTER TABLE leads ADD COLUMN first_name TEXT DEFAULT ''"); } catch(e) {}
-
 try { db.exec("ALTER TABLE leads ADD COLUMN last_name TEXT DEFAULT ''"); } catch(e) {}
+
+// Enforce phone number exclusivity: each SignalWire number may only be assigned to one salesperson
+try { db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_users_phone_number_id ON sales_users(phone_number_id) WHERE phone_number_id IS NOT NULL"); } catch(e) {}

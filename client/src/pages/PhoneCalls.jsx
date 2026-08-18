@@ -22,6 +22,9 @@ export default function PhoneCalls() {
   const [filterEmailSent, setFilterEmailSent] = useState(false);
   const [phoneNumbers, setPhoneNumbers] = useState([]);
   const [selectedPhoneId, setSelectedPhoneId] = useState('');
+  const [myAssignedNumber, setMyAssignedNumber] = useState(null);
+  const userRole = localStorage.getItem('gls_role') || 'admin';
+  const isSalesperson = userRole === 'salesperson';
   const [selectedIds, setSelectedIds] = useState(new Set());
 
   const filterByScrape = (scrapeId, all) => scrapeId ? all.filter(l => String(l.scrape_id) === String(scrapeId)) : all;
@@ -54,7 +57,12 @@ export default function PhoneCalls() {
     apiFetch('/scrapes').then(setScrapes).catch(() => {});
     apiFetch('/phone-numbers').then(setPhoneNumbers).catch(console.error);
     // Auto-select user's assigned number (or default)
-    apiFetch('/phone-numbers/my').then(num => { if (num) setSelectedPhoneId(String(num.id)); }).catch(console.error);
+    apiFetch('/phone-numbers/my').then(num => {
+      if (num) {
+        setSelectedPhoneId(String(num.id));
+        setMyAssignedNumber(num);
+      }
+    }).catch(console.error);
     apiFetch('/voice-scripts')
       .then(data => {
         setVoiceScripts(data);
@@ -149,7 +157,23 @@ export default function PhoneCalls() {
           </div>
 
           {/* Phone number */}
-          {phoneNumbers.length > 0 && (
+          {isSalesperson ? (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Calling From (Assigned Number)</label>
+              {myAssignedNumber ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg">
+                  <span className="text-green-400 text-sm">📞</span>
+                  <span className="text-white text-sm">{myAssignedNumber.label} — {myAssignedNumber.number}</span>
+                  <span className="ml-auto text-xs text-gray-500">(locked)</span>
+                </div>
+              ) : (
+                <div className="px-3 py-2 bg-red-900/30 border border-red-700 rounded-lg">
+                  <p className="text-red-400 text-sm font-medium">⚠️ No phone number assigned</p>
+                  <p className="text-xs text-red-500 mt-0.5">You cannot place calls until an admin assigns you a SignalWire phone number.</p>
+                </div>
+              )}
+            </div>
+          ) : phoneNumbers.length > 0 && (
             <div>
               <label className="block text-xs text-gray-400 mb-1">Calling From</label>
               <select value={selectedPhoneId} onChange={e => setSelectedPhoneId(e.target.value)}
@@ -217,7 +241,8 @@ export default function PhoneCalls() {
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
               {ttsLoading ? 'Generating...' : '🔊 TTS Preview'}
             </button>
-            <button onClick={handleTrigger} disabled={calling || !script}
+            <button onClick={handleTrigger} disabled={calling || !script || (isSalesperson && !myAssignedNumber)}
+              title={isSalesperson && !myAssignedNumber ? 'No phone number assigned — contact your admin' : ''}
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
               {calling ? 'Calling...' : selectedIds.size > 0 ? `📞 Call ${selectedIds.size} Selected` : `📞 Call All (${leads.length})`}
             </button>

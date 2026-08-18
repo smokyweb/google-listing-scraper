@@ -94,7 +94,10 @@ export default function SalesUsers() {
       setMsg({ type: 'success', text: editUser ? 'User updated' : 'User added' });
       setShowAdd(false);
       load();
-    } catch (err) { setMsg({ type: 'error', text: err.message }); }
+    } catch (err) {
+      // Surface API error messages (including phone number conflicts) directly to the user
+      setMsg({ type: 'error', text: err.message || 'An error occurred. Please try again.' });
+    }
     finally { setSaving(false); }
   };
 
@@ -126,8 +129,18 @@ export default function SalesUsers() {
               <div><label className="text-xs text-gray-400">Assigned Phone Number</label>
                 <select value={form.phone_number_id} onChange={e=>setForm({...form,phone_number_id:e.target.value})} className={inp}>
                   <option value="">None (use default)</option>
-                  {phoneNumbers.map(n=><option key={n.id} value={n.id}>{n.label} — {n.number}</option>)}
+                  {phoneNumbers
+                    .filter(n => {
+                      // Show the number if: unassigned, or assigned to the user currently being edited
+                      if (!n.assigned_to_id) return true;
+                      if (editUser && String(n.assigned_to_id) === String(editUser.id)) return true;
+                      return false;
+                    })
+                    .map(n => <option key={n.id} value={n.id}>{n.label} — {n.number}</option>)}
                 </select>
+                {phoneNumbers.some(n => n.assigned_to_id && !(editUser && String(n.assigned_to_id) === String(editUser.id))) && (
+                  <p className="text-xs text-gray-600 mt-0.5">Numbers assigned to other salespeople are hidden</p>
+                )}
               </div>
               <div><label className="text-xs text-gray-400">Forward Incoming Calls To</label>
                 <input value={form.forward_number} onChange={e=>setForm({...form,forward_number:e.target.value})} placeholder="Salesperson's personal cell: (865) 555-1234" className={inp} />

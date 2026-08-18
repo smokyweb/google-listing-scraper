@@ -315,7 +315,24 @@ router.post('/trigger', authMiddleware, async (req, res) => {
     const callScript = script || activeScript?.script || 'Hello {company_name}, this is a business outreach call.';
     const swConfig = getSignalWireConfig();
     const transferNumber = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
-    const fromNumber = resolvePhoneNumber(phoneNumberId, swConfig.phoneNumber);
+
+    // Salesperson: from number must come from their assigned phone — ignore client-supplied phoneNumberId
+    let fromNumber;
+    if (req.user?.role === 'salesperson' && req.user?.userId) {
+      const sp = db.prepare('SELECT phone_number_id FROM sales_users WHERE id = ?').get(req.user.userId);
+      if (!sp || !sp.phone_number_id) {
+        return res.status(400).json({ error: 'You do not have an assigned SignalWire phone number. Please contact your administrator to assign one before placing calls.' });
+      }
+      const assignedNum = db.prepare('SELECT number FROM phone_numbers WHERE id = ?').get(sp.phone_number_id);
+      if (!assignedNum) {
+        return res.status(400).json({ error: 'Your assigned phone number could not be found. Please contact your administrator.' });
+      }
+      fromNumber = assignedNum.number;
+    } else {
+      // Admin: use client-supplied phoneNumberId or default
+      fromNumber = resolvePhoneNumber(phoneNumberId, swConfig.phoneNumber);
+    }
+
     const isMock = !swConfig.projectId || !swConfig.token;
     const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
 

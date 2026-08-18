@@ -29,7 +29,14 @@ router.get('/', authMiddleware, (req, res) => {
     // No assigned number - return empty
     return res.json([]);
   }
-  const numbers = db.prepare("SELECT * FROM phone_numbers WHERE provider = 'signalwire' ORDER BY is_default DESC, created_at ASC").all();
+  // Include assignment info so the frontend can exclude taken numbers from dropdowns
+  const numbers = db.prepare(`
+    SELECT pn.*, su.id as assigned_to_id, su.name as assigned_to_name
+    FROM phone_numbers pn
+    LEFT JOIN sales_users su ON su.phone_number_id = pn.id AND su.is_active = 1
+    WHERE pn.provider = 'signalwire'
+    ORDER BY pn.is_default DESC, pn.created_at ASC
+  `).all();
   res.json(numbers);
 });
 

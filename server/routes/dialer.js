@@ -45,7 +45,21 @@ router.post('/call', authMiddleware, async (req, res) => {
     const config = getSignalWireConfig();
     const isMock = !config.projectId || !config.token;
 
-    const fromNumber = resolveFromNumber(fromNumberId);
+    // Salesperson: derive from number strictly from their assigned phone — ignore client-supplied fromNumberId
+    let fromNumber;
+    if (req.user?.role === 'salesperson' && req.user?.userId) {
+      const sp = db.prepare('SELECT phone_number_id FROM sales_users WHERE id = ?').get(req.user.userId);
+      if (!sp || !sp.phone_number_id) {
+        return res.status(400).json({ error: 'You do not have an assigned SignalWire phone number. Please contact your administrator.' });
+      }
+      const assignedNum = db.prepare('SELECT number FROM phone_numbers WHERE id = ?').get(sp.phone_number_id);
+      if (!assignedNum) {
+        return res.status(400).json({ error: 'Your assigned phone number could not be found. Please contact your administrator.' });
+      }
+      fromNumber = assignedNum.number;
+    } else {
+      fromNumber = resolveFromNumber(fromNumberId);
+    }
     const toNormalized = normalizePhone(toNumber);
     const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
 
@@ -116,7 +130,22 @@ router.post('/sms', authMiddleware, async (req, res) => {
 
     const config = getSignalWireConfig();
     const isMock = !config.projectId || !config.token;
-    const fromNumber = resolveFromNumber(fromNumberId);
+
+    // Salesperson: derive from number strictly from their assigned phone
+    let fromNumber;
+    if (req.user?.role === 'salesperson' && req.user?.userId) {
+      const sp = db.prepare('SELECT phone_number_id FROM sales_users WHERE id = ?').get(req.user.userId);
+      if (!sp || !sp.phone_number_id) {
+        return res.status(400).json({ error: 'You do not have an assigned SignalWire phone number. Please contact your administrator.' });
+      }
+      const assignedNum = db.prepare('SELECT number FROM phone_numbers WHERE id = ?').get(sp.phone_number_id);
+      if (!assignedNum) {
+        return res.status(400).json({ error: 'Your assigned phone number could not be found. Please contact your administrator.' });
+      }
+      fromNumber = assignedNum.number;
+    } else {
+      fromNumber = resolveFromNumber(fromNumberId);
+    }
     const toNormalized = normalizePhone(toNumber);
 
     if (isMock) {
