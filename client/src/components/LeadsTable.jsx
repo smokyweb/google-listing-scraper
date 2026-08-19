@@ -43,6 +43,8 @@ export default function LeadsTable({
   onSMS,
   onEmail,
   onNotesSave,
+  // Voice drop
+  onVoiceDrop,
   // Admin-only props
   isAdmin    = false,
   salesUsers = [],
@@ -78,7 +80,7 @@ export default function LeadsTable({
     (showSelect ? 1 : 0) +
     10 + // First Name, Last Name, Company, Phone, Email, Website, Status, Opens, Notes, Channels
     (isAdmin ? 1 : 0) +
-    (onEdit || onDelete || onCall || onSMS || onEmail ? 1 : 0);
+    (onEdit || onDelete || onCall || onSMS || onEmail || onVoiceDrop ? 1 : 0);
 
   return (
     <div className="overflow-x-auto">
@@ -242,9 +244,9 @@ export default function LeadsTable({
               )}
 
               {/* Actions */}
-              {(onEdit || onDelete || onCall || onSMS || onEmail) && (
+              {(onEdit || onDelete || onCall || onSMS || onEmail || onVoiceDrop) && (
                 <td className="p-3">
-                  <div className="flex gap-1.5 flex-wrap">
+                  <div className="flex gap-1.5 flex-wrap items-center">
                     {onCall  && lead.phone && (
                       <button
                         onClick={() => onCall(lead)}
@@ -265,6 +267,27 @@ export default function LeadsTable({
                         title="Send Email"
                         className="px-2 py-1 bg-purple-800 hover:bg-purple-700 text-purple-200 rounded text-xs transition-colors"
                       >✉</button>
+                    )}
+                    {/* Voice Drop buttons — always visible when lead has a phone */}
+                    {onVoiceDrop && lead.phone && (
+                      <>
+                        <button
+                          onClick={() => onVoiceDrop(lead, 'voicemail')}
+                          title="Voicemail Drop — system calls recipient automatically"
+                          className="flex items-center gap-1 px-2 py-1 bg-blue-700 hover:bg-blue-600 text-blue-100 rounded text-xs font-medium transition-colors"
+                        >
+                          <span>📱</span>
+                          <span>VM Drop</span>
+                        </button>
+                        <button
+                          onClick={() => onVoiceDrop(lead, 'agent')}
+                          title="Live Voice Message — you listen in, drop message when ready"
+                          className="flex items-center gap-1 px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-yellow-100 rounded text-xs font-medium transition-colors"
+                        >
+                          <span>🎙️</span>
+                          <span>Live VM</span>
+                        </button>
+                      </>
                     )}
                     {onEdit && (
                       <button

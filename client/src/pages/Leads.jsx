@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../api';
 import LeadsTable from '../components/LeadsTable';
 import EditLeadModal from '../components/EditLeadModal';
+import VoiceDropModal from '../components/VoiceDropModal';
 
 // ─── Add Lead Modal ───────────────────────────────────────────────────────────
 
@@ -101,6 +102,15 @@ export default function Leads() {
   const [smsLead,            setSmsLead]            = useState(null);
   const [emailLead,          setEmailLead]          = useState(null);
   const [showAddModal,       setShowAddModal]       = useState(false);
+
+  // Voice Drop state
+  const [voiceScripts,     setVoiceScripts]     = useState([]);
+  const [selectedScriptId, setSelectedScriptId] = useState('');
+  const [voiceScript,      setVoiceScript]      = useState('');
+  const [voiceDropLead,    setVoiceDropLead]    = useState(null);
+  const [voiceDropMode,    setVoiceDropMode]    = useState('voicemail');
+  const [voiceDropOpen,    setVoiceDropOpen]    = useState(false);
+
   const navigate = useNavigate();
 
   // ── fetch sales users list (admin only) ────────────────────────────────────
@@ -113,6 +123,27 @@ export default function Leads() {
   // ── fetch scrapes list ─────────────────────────────────────────────────────
   useEffect(() => {
     apiFetch('/scrapes').then(data => setScrapes(data)).catch(() => {});
+  }, []);
+
+  // ── fetch voice scripts ────────────────────────────────────────────────────
+  useEffect(() => {
+    apiFetch('/voice-scripts')
+      .then(data => {
+        setVoiceScripts(data);
+        const active = data.find(s => s.is_active);
+        if (active) {
+          setSelectedScriptId(String(active.id));
+          setVoiceScript(active.script);
+        }
+      })
+      .catch(console.error);
+  }, []);
+
+  // ── open voice drop modal ──────────────────────────────────────────────────
+  const openVoiceDrop = useCallback((lead, mode) => {
+    setVoiceDropLead(lead);
+    setVoiceDropMode(mode);
+    setVoiceDropOpen(true);
   }, []);
 
   // ── fetch leads ────────────────────────────────────────────────────────────
@@ -336,6 +367,7 @@ export default function Leads() {
             isAdmin={isAdmin}
             salesUsers={salesUsers}
             onAssign={isAdmin ? assignLead : undefined}
+            onVoiceDrop={openVoiceDrop}
           />
         )}
       </div>
@@ -379,6 +411,16 @@ export default function Leads() {
       {callLead  && <QuickCallModal  lead={callLead}  onClose={() => setCallLead(null)} />}
       {smsLead   && <QuickSMSModal   lead={smsLead}   onClose={() => setSmsLead(null)}  onSent={fetchLeads} />}
       {emailLead && <QuickEmailModal lead={emailLead} onClose={() => setEmailLead(null)} onSent={fetchLeads} />}
+      {voiceDropOpen && voiceDropLead && (
+        <VoiceDropModal
+          lead={voiceDropLead}
+          voiceScripts={voiceScripts}
+          selectedScriptId={selectedScriptId}
+          scriptText={voiceScript}
+          mode={voiceDropMode}
+          onClose={() => { setVoiceDropOpen(false); setVoiceDropLead(null); }}
+        />
+      )}
     </div>
   );
 }
