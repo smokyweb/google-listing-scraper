@@ -320,15 +320,15 @@ export default function PhoneCalls() {
                 {/* Voicemail Drop — system calls lead directly, auto-plays script */}
                 <button
                   onClick={e => openVoiceDrop(lead, 'voicemail', e)}
-                  title="Voicemail Drop — system calls lead directly, plays script automatically"
+                  title="Voicemail Drop — system calls lead directly, plays script automatically, no salesperson leg"
                   className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded text-blue-400 hover:bg-blue-900/40 hover:text-blue-300 transition-all"
                 >
                   📱
                 </button>
-                {/* Agent-Audio Assisted Drop — salesperson called first, hears lead live */}
+                {/* Live Voice Message — salesperson called first (muted/listen-only), manually drops message */}
                 <button
                   onClick={e => openVoiceDrop(lead, 'agent', e)}
-                  title="Agent-Audio Assisted Drop — your forward number is called first, you hear the lead, then manually drop the message"
+                  title="Live Voice Message — your forward number rings first, you listen muted, then drop the pre-recorded message"
                   className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded text-yellow-400 hover:bg-yellow-900/40 hover:text-yellow-300 transition-all"
                 >
                   🎙️

@@ -1,17 +1,26 @@
 /**
  * VoiceDropModal
  *
- * mode='voicemail'  — System calls the recipient directly. No salesperson leg.
- *   Audio plays automatically when the call connects (human or voicemail).
- *   After the message the recipient hears the standard Press 1/2/3/4 menu.
- *   UI just shows progress; there is no "Drop" button.
+ * Supports two target types:
+ *   - lead prop (object with .id, .name, .phone) — used from /calls lead rows
+ *   - targetPhone prop (string, E.164 or 10-digit) — used from manual Dialer page
  *
- * mode='agent'      — Calls salesperson's forward number first, then the lead.
- *   Both legs join a conference so the salesperson can hear the lead.
- *   Salesperson manually clicks "Drop Voice Message" when ready.
- *   After drop, audio plays to lead only; agent leg is hung up immediately.
- *   Lead then hears Press 1/2/3/4 menu.
- *   Requires forward_number configured on the salesperson's account.
+ * Two modes (passed as the `mode` prop):
+ *
+ *   mode='voicemail'  — "Voicemail Drop"
+ *     System calls the recipient directly. No salesperson leg.
+ *     Audio plays automatically when the call connects (human or voicemail).
+ *     After the message the recipient hears the standard Press 1/2/3/4 menu.
+ *     UI just shows progress; there is no "Drop" button.
+ *
+ *   mode='agent'      — "Live Voice Message"
+ *     Calls salesperson's forward number first. Salesperson joins conference
+ *     in LISTEN-ONLY (muted) mode — they can hear the recipient but the
+ *     recipient cannot hear them.
+ *     Salesperson clicks "Drop Voice Message" when ready.
+ *     After drop, audio plays to recipient only; agent leg is hung up immediately.
+ *     Recipient then hears Press 1/2/3/4 menu.
+ *     Requires forward_number configured on the salesperson's account.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -20,7 +29,7 @@ import { apiFetch } from '../api';
 // Human-readable state labels per mode
 const LABELS = {
   voicemail: {
-    initiated: 'Calling lead…',
+    initiated: 'Calling recipient…',
     active: 'Call connected — message playing now',
     completed: 'Message delivered ✓',
     failed: 'Call could not be completed.',
@@ -29,9 +38,9 @@ const LABELS = {
   },
   agent: {
     initiated: 'Calling your forward number…',
-    agent_answered: 'Connected. Now calling the lead…',
-    recipient_answered: 'Lead answered — ready to drop the message.',
-    dropping: 'Playing message to lead…',
+    agent_answered: 'Connected. Now calling the recipient…',
+    recipient_answered: 'Recipient answered — you are listening. Click Drop when ready.',
+    dropping: 'Playing message to recipient…',
     completed: 'Message delivered ✓',
     failed: 'Call could not be completed.',
     cancelled: 'Call cancelled.',
@@ -42,7 +51,8 @@ const LABELS = {
 const TERMINAL = ['completed', 'cancelled', 'failed', 'mock'];
 
 export default function VoiceDropModal({
-  lead,
+  lead,          // { id, name, phone } — pass when dropping to a lead row
+  targetPhone,   // string — pass when dropping to an arbitrary number (Dialer)
   voiceScripts,
   selectedScriptId,
   scriptText,
@@ -50,7 +60,7 @@ export default function VoiceDropModal({
   onClose,
 }) {
   const [sessionId, setSessionId] = useState(null);
-  const [sessionState, setSessionState] = useState(null); // raw string from server
+  const [sessionState, setSessionState] = useState(null);
   const [sessionError, setSessionError] = useState('');
   const [selectedId, setSelectedId] = useState(selectedScriptId || '');
   const [text, setText] = useState(scriptText || '');
@@ -63,7 +73,12 @@ export default function VoiceDropModal({
   const isTerminal = TERMINAL.includes(sessionState);
   const isActive = sessionId && !isTerminal;
 
-  const modeLabel = isVoicemail ? 'Voicemail Drop' : 'Agent-Audio Assisted Drop';
+  // Display name/number in the header
+  const targetLabel = lead
+    ? `${lead.name} · ${lead.phone}`
+    : targetPhone || '—';
+
+  const modeLabel = isVoicemail ? 'Voicemail Drop' : 'Live Voice Message';
 
   const stopPolling = () => {
     if (timer.current) { clearInterval(timer.current); timer.current = null; }
@@ -87,14 +102,21 @@ export default function VoiceDropModal({
     setBusy(true);
     setUiError('');
     try {
+      const payload = {
+        scriptText: text,
+        voiceScriptId: selectedId ? Number(selectedId) : undefined,
+        mode,
+      };
+      // Pass either leadId or targetPhone — never both
+      if (lead) {
+        payload.leadId = lead.id;
+      } else {
+        payload.targetPhone = targetPhone;
+      }
+
       const data = await apiFetch('/voice-drop/start', {
         method: 'POST',
-        body: JSON.stringify({
-          leadId: lead.id,
-          scriptText: text,
-          voiceScriptId: selectedId ? Number(selectedId) : undefined,
-          mode,
-        }),
+        body: JSON.stringify(payload),
       });
       const id = data.sessionId;
       setSessionId(id);
@@ -131,7 +153,10 @@ export default function VoiceDropModal({
     if (!sessionId) return onClose();
     setBusy(true);
     try {
-      await apiFetch('/voice-drop/cancel', { method: 'POST', body: JSON.stringify({ sessionId }) });
+      await apiFetch('/voice-drop/cancel', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId }),
+      });
       stopPolling();
       setSessionState('cancelled');
     } catch (err) {
@@ -169,9 +194,7 @@ export default function VoiceDropModal({
         <div className="mb-4 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-semibold text-white">{modeLabel}</h3>
-            <p className="mt-0.5 text-sm text-gray-400">
-              {lead.name} &middot; {lead.phone}
-            </p>
+            <p className="mt-0.5 text-sm text-gray-400">{targetLabel}</p>
           </div>
           <button
             onClick={onClose}
@@ -188,13 +211,23 @@ export default function VoiceDropModal({
           <div className="mb-4 rounded-lg bg-gray-800/50 border border-gray-700 p-3 text-xs text-gray-400 space-y-1">
             {isVoicemail ? (
               <>
-                <p className="font-medium text-gray-300">📱 Direct system call — no salesperson leg</p>
-                <p>The system calls the lead directly. The message plays automatically whether a human answers or it goes to voicemail. Afterward, the lead hears the standard Press 1/2/3/4 menu.</p>
+                <p className="font-medium text-gray-300">📱 Voicemail Drop — no salesperson leg</p>
+                <p>
+                  The system calls the recipient directly. The message plays automatically whether a
+                  human answers or it goes to voicemail. Afterward, the recipient hears the
+                  standard Press 1/2/3/4 menu.
+                </p>
               </>
             ) : (
               <>
-                <p className="font-medium text-gray-300">🎙️ Agent-Audio Assisted — requires forward number</p>
-                <p>Your configured forward number is called first. Once you and the lead are in the conference, you hear them live and choose when to drop the message. The message plays to the lead only; you are hung up immediately after.</p>
+                <p className="font-medium text-gray-300">🎙️ Live Voice Message — listen-only monitoring</p>
+                <p>
+                  Your configured forward number is called first. You join the call
+                  <strong className="text-white"> muted</strong> — you can hear the recipient
+                  but they cannot hear you. Click "Drop Voice Message" when ready. The pre-recorded
+                  script plays to the recipient only; your line disconnects immediately after.
+                  Recipient then hears Press 1/2/3/4 menu.
+                </p>
               </>
             )}
           </div>
@@ -208,13 +241,13 @@ export default function VoiceDropModal({
               value={selectedId}
               onChange={e => {
                 setSelectedId(e.target.value);
-                const found = voiceScripts.find(s => String(s.id) === e.target.value);
+                const found = (voiceScripts || []).find(s => String(s.id) === e.target.value);
                 if (found) setText(found.script);
               }}
               className="mb-3 w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white"
             >
               <option value="">Custom / current script</option>
-              {voiceScripts.map(s => (
+              {(voiceScripts || []).map(s => (
                 <option key={s.id} value={String(s.id)}>
                   {s.name}{s.is_active ? ' ✓' : ''}
                 </option>
@@ -239,13 +272,14 @@ export default function VoiceDropModal({
             )}
             {canDrop && (
               <p className="mt-2 text-xs text-yellow-200">
-                The message will play to the lead only. Your line disconnects immediately after.
-                Recipient then hears the Press 1/2/3/4 menu.
+                You are in listen-only mode — the recipient cannot hear you. Click "Drop Voice
+                Message" when ready. The pre-recorded script plays to the recipient; your line
+                disconnects immediately after. Recipient then hears the Press 1/2/3/4 menu.
               </p>
             )}
             {isSuccess && isVoicemail && (
               <p className="mt-2 text-xs text-green-300">
-                The script was played. The lead heard the Press 1/2/3/4 menu after.
+                The script was played. The recipient heard the Press 1/2/3/4 menu after.
               </p>
             )}
             {isSuccess && isAgent && (
@@ -263,6 +297,7 @@ export default function VoiceDropModal({
 
         {/* Action buttons */}
         <div className="mt-5 flex flex-wrap justify-end gap-2">
+
           {/* Pre-start */}
           {!sessionId && (
             <>
@@ -279,7 +314,7 @@ export default function VoiceDropModal({
               >
                 {busy
                   ? isVoicemail ? 'Generating audio…' : 'Starting…'
-                  : isVoicemail ? '📱 Start Voicemail Drop' : '🎙️ Start Agent-Audio Call'}
+                  : isVoicemail ? '📱 Start Voicemail Drop' : '🎙️ Start Live Voice Message'}
               </button>
             </>
           )}

@@ -1,24 +1,32 @@
 /**
- * voice-drop.js — Per-lead voice drop (two modes)
+ * voice-drop.js — Per-lead (or manual number) voice drop — two modes
  *
- * ─── MODE: voicemail (default, primary) ──────────────────────────────────────
+ * ─── MODE: voicemail ─────────────────────────────────────────────────────────
+ *  "Voicemail Drop"
  *  System calls the recipient directly — no salesperson leg at all.
  *  Audio is generated first (ElevenLabs or <Say> fallback), then the call is
  *  placed with inline TwiML that auto-plays the message on connect.
  *  After the message, the standard IVR menu plays (Press 1/2/3/4).
  *  Works whether a human answers or voicemail picks up.
+ *  Salesperson leg is never created.
  *
- * ─── MODE: agent (optional, clearly labeled) ─────────────────────────────────
+ * ─── MODE: agent ─────────────────────────────────────────────────────────────
+ *  "Live Voice Message"
  *  Requires the salesperson to have a forward_number set.
- *  1. Calls salesperson's forward_number first → they join a conference.
- *  2. System then calls the lead → lead joins same conference.
- *  3. Salesperson hears the lead live.
+ *  1. Calls salesperson's forward_number first → they join a conference MUTED
+ *     (they can hear but the recipient CANNOT hear them).
+ *  2. System then calls the recipient → recipient joins same conference.
+ *  3. Salesperson hears the recipient live (listen-only).
  *  4. Salesperson manually clicks "Drop Voice Message" to play the script.
- *  5. Audio plays to lead only; salesperson leg is immediately hung up.
- *  6. After playback, lead hears IVR menu (Press 1/2/3/4).
+ *  5. Audio plays to recipient only; salesperson leg is immediately hung up.
+ *  6. After playback, recipient hears IVR menu (Press 1/2/3/4).
  *
  * API:
- *   POST /api/voice-drop/start                 — start session (mode required)
+ *   POST /api/voice-drop/start
+ *     Body: { leadId?, targetPhone?, scriptText?, voiceScriptId?, mode }
+ *     Either leadId OR targetPhone is required.
+ *     targetPhone: E.164 or 10-digit US number — used when there is no lead row.
+ *
  *   GET  /api/voice-drop/session/:id           — poll state
  *   POST /api/voice-drop/drop-message          — (agent mode only) manual drop
  *   POST /api/voice-drop/cancel                — hang up all legs
@@ -70,12 +78,24 @@ function swAuthHeader(config) {
   return 'Basic ' + Buffer.from(`${config.projectId}:${config.token}`).toString('base64');
 }
 
+/**
+ * Normalize a raw phone string to E.164 (+1XXXXXXXXXX for US numbers).
+ * Returns '' if the input is empty/null.
+ */
 function normalizePhone(raw) {
   if (!raw) return '';
   let n = raw.replace(/\D/g, '');
   if (n.length === 10) n = '1' + n;
   if (!n.startsWith('+')) n = '+' + n;
   return n;
+}
+
+/**
+ * Validate that a normalized phone number looks like a valid E.164 string.
+ * Accepts +10000000000 to +199999999999999 (ITU: 1–15 digits after +).
+ */
+function isValidE164(normalized) {
+  return /^\+\d{10,15}$/.test(normalized);
 }
 
 // ── ElevenLabs TTS ──────────────────────────────────────────────────────────
@@ -130,7 +150,10 @@ async function placeCall(config, { from, to, twiml, statusCallback, statusCallba
     `https://${config.spaceUrl}/api/laml/2010-04-01/Accounts/${config.projectId}/Calls.json`,
     {
       method: 'POST',
-      headers: { Authorization: swAuthHeader(config), 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        Authorization: swAuthHeader(config),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
       body,
     }
   );
@@ -147,12 +170,16 @@ async function updateCall(config, callSid, { twiml, status }) {
     `https://${config.spaceUrl}/api/laml/2010-04-01/Accounts/${config.projectId}/Calls/${callSid}.json`,
     {
       method: 'POST',
-      headers: { Authorization: swAuthHeader(config), 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        Authorization: swAuthHeader(config),
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
       body,
     }
   );
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) console.warn(`[VoiceDrop] updateCall ${callSid} failed:`, data.message || resp.status);
+  if (!resp.ok)
+    console.warn(`[VoiceDrop] updateCall ${callSid} failed:`, data.message || resp.status);
   return data;
 }
 
@@ -194,16 +221,25 @@ function buildPlaybackTwiml(audioUrl, scriptText, baseUrl) {
   return `<?xml version="1.0" encoding="UTF-8"?><Response>${messageEl}${ivrMenuTwiml(baseUrl)}</Response>`;
 }
 
-// Conference TwiML for agent-mode legs
+/**
+ * Conference TwiML for the AGENT (salesperson) leg.
+ * muted="true" — agent can HEAR the recipient but the recipient cannot hear the agent.
+ * This is the listen-only / monitoring leg.
+ */
 function agentConferenceTwiml(confName) {
   return (
     `<?xml version="1.0" encoding="UTF-8"?><Response>` +
-    `<Say voice="alice">Lead is connecting. Please hold.</Say>` +
-    `<Dial><Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false" waitUrl="">${xmlEscape(confName)}</Conference></Dial>` +
+    `<Say voice="alice">Lead is connecting. You are in listen-only mode — your microphone is muted. Click Drop Voice Message in the app when you are ready.</Say>` +
+    `<Dial><Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false" waitUrl="" muted="true">${xmlEscape(confName)}</Conference></Dial>` +
     `</Response>`
   );
 }
 
+/**
+ * Conference TwiML for the RECIPIENT (lead) leg.
+ * The recipient joins normally — they will hear whatever is played to the conference.
+ * No audio is played until the agent triggers the drop.
+ */
 function leadConferenceTwiml(confName) {
   return (
     `<?xml version="1.0" encoding="UTF-8"?><Response>` +
@@ -261,6 +297,7 @@ function resolveAdminFromNumber(config) {
 }
 
 function personalizeScript(scriptText, lead) {
+  if (!lead) return scriptText || '';
   return (scriptText || '')
     .replace(/{company_name}/g, lead.name || '')
     .replace(/{business_name}/g, lead.name || '')
@@ -276,18 +313,29 @@ function personalizeScript(scriptText, lead) {
 /**
  * POST /api/voice-drop/start
  *
- * Body: { leadId, scriptText?, voiceScriptId?, mode }
+ * Body: { leadId?, targetPhone?, scriptText?, voiceScriptId?, mode }
  *   mode = 'voicemail' (default) | 'agent'
  *
- * voicemail: generates audio, calls lead directly, auto-plays + IVR menu.
- * agent:     calls salesperson forward_number first, then lead; manual drop.
+ * EITHER leadId OR targetPhone is required.
+ *   leadId      — drops to a lead row; assignment/permission is checked.
+ *   targetPhone — manual target (E.164 or 10-digit US); no lead row needed.
+ *                 Used by the manual Dialer page. Salesperson's assigned
+ *                 SignalWire number / forward number rules still apply.
+ *
+ * voicemail: generates audio, calls recipient directly, auto-plays + IVR menu.
+ * agent:     calls salesperson forward_number first (MUTED/listen-only),
+ *            then recipient; manual "Drop" button triggers audio.
  */
 router.post('/start', authMiddleware, async (req, res) => {
   try {
     cleanupExpiredSessions();
 
-    const { leadId, scriptText, voiceScriptId, mode = 'voicemail' } = req.body;
-    if (!leadId) return res.status(400).json({ error: 'leadId is required' });
+    const { leadId, targetPhone, scriptText, voiceScriptId, mode = 'voicemail' } = req.body;
+
+    // Require leadId OR targetPhone (not both required, but at least one)
+    if (!leadId && !targetPhone) {
+      return res.status(400).json({ error: 'leadId or targetPhone is required' });
+    }
     if (!['voicemail', 'agent'].includes(mode)) {
       return res.status(400).json({ error: 'mode must be "voicemail" or "agent"' });
     }
@@ -296,14 +344,29 @@ router.post('/start', authMiddleware, async (req, res) => {
     const config = getSignalWireConfig();
     const isMock = !config.projectId || !config.token;
 
-    // ── Lead validation ──────────────────────────────────────────────────────
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
-    if (!lead.phone) return res.status(400).json({ error: 'Lead has no phone number' });
+    // ── Lead / manual target resolution ────────────────────────────────────
+    let lead = null;
+    let leadPhone;
 
-    if (req.user.role === 'salesperson') {
-      if (lead.assigned_user_id && lead.assigned_user_id !== req.user.userId) {
-        return res.status(403).json({ error: 'This lead is not assigned to you' });
+    if (leadId) {
+      lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
+      if (!lead) return res.status(404).json({ error: 'Lead not found' });
+      if (!lead.phone) return res.status(400).json({ error: 'Lead has no phone number' });
+
+      if (req.user.role === 'salesperson') {
+        if (lead.assigned_user_id && lead.assigned_user_id !== req.user.userId) {
+          return res.status(403).json({ error: 'This lead is not assigned to you' });
+        }
+      }
+      leadPhone = normalizePhone(lead.phone);
+    } else {
+      // Manual targetPhone — validate
+      leadPhone = normalizePhone(targetPhone);
+      if (!isValidE164(leadPhone)) {
+        return res.status(400).json({
+          error:
+            'Invalid phone number. Provide a valid US number (10 digits) or E.164 format (+1XXXXXXXXXX).',
+        });
       }
     }
 
@@ -313,7 +376,9 @@ router.post('/start', authMiddleware, async (req, res) => {
       const { fromNumber: fn } = resolveSalespersonNumbers(req.user.userId);
       fromNumber = fn;
       if (!fromNumber) {
-        return res.status(400).json({ error: 'No SignalWire phone number assigned to your account.' });
+        return res.status(400).json({
+          error: 'No SignalWire phone number assigned to your account.',
+        });
       }
     } else {
       fromNumber = resolveAdminFromNumber(config);
@@ -327,7 +392,7 @@ router.post('/start', authMiddleware, async (req, res) => {
         if (!forwardNumber) {
           return res.status(400).json({
             error:
-              'Agent-Audio mode requires a forward number on your account. ' +
+              'Live Voice Message requires a forward number on your account. ' +
               'Ask your admin to set your forward number, or use Voicemail Drop instead.',
           });
         }
@@ -338,7 +403,7 @@ router.post('/start', authMiddleware, async (req, res) => {
         if (!transfer) {
           return res.status(400).json({
             error:
-              'Agent-Audio mode requires transfer_phone_number in Settings, or use Voicemail Drop instead.',
+              'Live Voice Message requires transfer_phone_number in Settings, or use Voicemail Drop instead.',
           });
         }
         agentPhone = normalizePhone(transfer);
@@ -362,7 +427,6 @@ router.post('/start', authMiddleware, async (req, res) => {
     // ── Create session ───────────────────────────────────────────────────────
     const sessionId = uuidv4();
     const confName = `vd-${sessionId}`;
-    const leadPhone = normalizePhone(lead.phone);
     const salespersonId = req.user.role === 'salesperson' ? req.user.userId : null;
     const expiresAt = new Date(Date.now() + SESSION_TTL_MS)
       .toISOString()
@@ -375,8 +439,16 @@ router.post('/start', authMiddleware, async (req, res) => {
          agent_phone, script_text, mode, state, expires_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'initiated', ?)
     `).run(
-      sessionId, salespersonId, leadId, leadPhone, confName,
-      fromNumber, agentPhone, resolvedScript, mode, expiresAt
+      sessionId,
+      salespersonId,
+      lead ? lead.id : null,   // NULL for manual targetPhone sessions
+      leadPhone,
+      confName,
+      fromNumber,
+      agentPhone,
+      resolvedScript,
+      mode,
+      expiresAt
     );
 
     // ── Mock mode ────────────────────────────────────────────────────────────
@@ -393,7 +465,7 @@ router.post('/start', authMiddleware, async (req, res) => {
 
     // ── VOICEMAIL MODE ───────────────────────────────────────────────────────
     if (mode === 'voicemail') {
-      // Generate audio first so it's ready when the call connects
+      // Generate audio first so it is ready when the call connects
       const audioUrl = await generateElevenLabsAudio(resolvedScript, baseUrl);
       if (audioUrl) updateSession(sessionId, { audio_url: audioUrl });
 
@@ -406,12 +478,15 @@ router.post('/start', authMiddleware, async (req, res) => {
         statusCallbackEvent: 'initiated ringing answered completed',
       });
       updateSession(sessionId, { recipient_call_sid: leadCall.sid });
-      console.log(`[VoiceDrop][voicemail] Session ${sessionId}: calling ${leadPhone} SID=${leadCall.sid}`);
+      console.log(
+        `[VoiceDrop][voicemail] Session ${sessionId}: calling ${leadPhone} SID=${leadCall.sid}`
+      );
       return res.json({ sessionId, mode: 'voicemail', state: 'initiated' });
     }
 
-    // ── AGENT MODE ───────────────────────────────────────────────────────────
-    // Call agent first; lead call is placed from the webhook when agent answers.
+    // ── AGENT MODE (Live Voice Message) ─────────────────────────────────────
+    // Call agent first — MUTED so they can hear but recipient cannot hear them.
+    // Lead call is placed from the webhook when agent answers.
     // Also pre-generate audio in background.
     const agentCall = await placeCall(config, {
       from: fromNumber,
@@ -421,14 +496,21 @@ router.post('/start', authMiddleware, async (req, res) => {
       statusCallbackEvent: 'initiated ringing answered completed',
     });
     updateSession(sessionId, { agent_call_sid: agentCall.sid });
-    console.log(`[VoiceDrop][agent] Session ${sessionId}: calling agent ${agentPhone} SID=${agentCall.sid}`);
+    console.log(
+      `[VoiceDrop][agent] Session ${sessionId}: calling agent ${agentPhone} SID=${agentCall.sid}`
+    );
 
     // Pre-generate audio in background
     generateElevenLabsAudio(resolvedScript, baseUrl)
       .then(url => { if (url) updateSession(sessionId, { audio_url: url }); })
       .catch(() => {});
 
-    return res.json({ sessionId, mode: 'agent', state: 'initiated', agentCallSid: agentCall.sid });
+    return res.json({
+      sessionId,
+      mode: 'agent',
+      state: 'initiated',
+      agentCallSid: agentCall.sid,
+    });
   } catch (err) {
     console.error('[VoiceDrop] start error:', err.message);
     res.status(500).json({ error: err.message });
@@ -457,8 +539,11 @@ router.get('/session/:id', authMiddleware, (req, res) => {
 
 /**
  * POST /api/voice-drop/drop-message
- * AGENT MODE ONLY. Plays audio to recipient leg only, hangs up agent,
+ * AGENT MODE ("Live Voice Message") ONLY.
+ * Plays audio to recipient leg only, hangs up agent immediately,
  * then serves the standard IVR menu to recipient.
+ *
+ * Idempotent: if already in 'dropping' state, returns success without re-triggering.
  */
 router.post('/drop-message', authMiddleware, async (req, res) => {
   try {
@@ -471,16 +556,25 @@ router.post('/drop-message', authMiddleware, async (req, res) => {
 
     if (session.mode === 'voicemail') {
       return res.status(409).json({
-        error: 'drop-message is not applicable for voicemail mode — audio plays automatically.',
+        error: 'drop-message is not applicable for Voicemail Drop — audio plays automatically.',
       });
     }
+
+    // Idempotent: already dropping/completed
+    if (session.state === 'dropping') {
+      return res.json({ success: true, state: 'dropping', idempotent: true });
+    }
+    if (session.state === 'completed') {
+      return res.json({ success: true, state: 'completed', idempotent: true });
+    }
+
     if (session.state === 'mock') {
       updateSession(sessionId, { state: 'completed' });
       return res.json({ success: true, state: 'completed', mock: true });
     }
     if (session.state !== 'recipient_answered') {
       return res.status(409).json({
-        error: `Cannot drop in state "${session.state}". Lead must be connected first.`,
+        error: `Cannot drop in state "${session.state}". Recipient must be connected first.`,
       });
     }
     if (!session.recipient_call_sid) {
@@ -505,9 +599,11 @@ router.post('/drop-message', authMiddleware, async (req, res) => {
 
     // Redirect recipient call (kicks them out of conference to play message)
     await updateCall(config, session.recipient_call_sid, { twiml: playTwiml });
-    console.log(`[VoiceDrop][agent] Session ${sessionId}: dropping to recipient ${session.recipient_call_sid}`);
+    console.log(
+      `[VoiceDrop][agent] Session ${sessionId}: dropping to recipient ${session.recipient_call_sid}`
+    );
 
-    // Hang up agent immediately — they've done their job
+    // Hang up agent immediately — they are done
     if (session.agent_call_sid) {
       updateCall(config, session.agent_call_sid, { status: 'completed' }).catch(e => {
         console.warn('[VoiceDrop] Agent hangup warning:', e.message);
@@ -592,7 +688,9 @@ router.post('/webhook/call-status', async (req, res) => {
     return;
   }
 
-  console.log(`[VoiceDrop webhook] sid=${sessionId} mode=${session.mode} leg=${leg} status=${CallStatus}`);
+  console.log(
+    `[VoiceDrop webhook] sid=${sessionId} mode=${session.mode} leg=${leg} status=${CallStatus}`
+  );
 
   const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
   const config = getSignalWireConfig();
@@ -600,7 +698,7 @@ router.post('/webhook/call-status', async (req, res) => {
   try {
     // ── Voicemail mode: only 'lead' leg ──────────────────────────────────────
     if (session.mode === 'voicemail') {
-      if (leg !== 'lead') return; // shouldn't happen
+      if (leg !== 'lead') return;
       if (CallStatus === 'in-progress') {
         updateSession(sessionId, { state: 'active', recipient_call_sid: CallSid });
       } else if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus)) {
@@ -618,7 +716,7 @@ router.post('/webhook/call-status', async (req, res) => {
     if (leg === 'agent') {
       if (CallStatus === 'in-progress') {
         updateSession(sessionId, { state: 'agent_answered', agent_call_sid: CallSid });
-        // Now call the lead
+        // Now call the recipient
         try {
           const leadCall = await placeCall(config, {
             from: session.from_number,
@@ -628,10 +726,15 @@ router.post('/webhook/call-status', async (req, res) => {
             statusCallbackEvent: 'initiated ringing answered completed',
           });
           updateSession(sessionId, { recipient_call_sid: leadCall.sid });
-          console.log(`[VoiceDrop][agent] Lead call to ${session.lead_phone} SID=${leadCall.sid}`);
+          console.log(
+            `[VoiceDrop][agent] Lead call to ${session.lead_phone} SID=${leadCall.sid}`
+          );
         } catch (err) {
           console.error(`[VoiceDrop][agent] Failed to call lead:`, err.message);
-          updateSession(sessionId, { state: 'failed', error_msg: `Failed to call lead: ${err.message}` });
+          updateSession(sessionId, {
+            state: 'failed',
+            error_msg: `Failed to call lead: ${err.message}`,
+          });
           updateCall(config, CallSid, { status: 'completed' }).catch(() => {});
         }
       } else if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus)) {
@@ -668,7 +771,10 @@ router.post('/webhook/call-status', async (req, res) => {
           // Lead hung up after IVR interaction or message ended — session complete
           updateSession(sessionId, { state: 'completed' });
         } else if (!['completed', 'failed', 'cancelled'].includes(cur.state)) {
-          updateSession(sessionId, { state: 'failed', error_msg: 'Lead disconnected unexpectedly' });
+          updateSession(sessionId, {
+            state: 'failed',
+            error_msg: 'Lead disconnected unexpectedly',
+          });
           if (cur.agent_call_sid) {
             updateCall(config, cur.agent_call_sid, { status: 'completed' }).catch(() => {});
           }

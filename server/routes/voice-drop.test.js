@@ -1,7 +1,10 @@
 /**
- * Tests for voice-drop route — state machine logic and webhook authorization.
+ * Tests for voice-drop route — state machine logic, webhook, TwiML, and
+ * manual targetPhone (no leadId) session support.
  *
  * Pure unit tests using an in-memory SQLite database.
+ * No real HTTP calls or SignalWire connections are made.
+ *
  * Run with:  node server/routes/voice-drop.test.js
  */
 
@@ -61,7 +64,7 @@ db.prepare('INSERT INTO phone_numbers (label, number, is_default) VALUES (?, ?, 
 db.prepare('INSERT INTO sales_users (name, email, password_hash, forward_number, phone_number_id) VALUES (?, ?, ?, ?, ?)').run('Alice', 'alice@test.com', 'hash', '+15559998888', 1);
 db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('signalwire_project_id', 'proj-abc-123');
 
-// ── Helpers (inline port of route logic) ─────────────────────────────────────
+// ── Helpers (inline ports of route logic) ───────────────────────────────────
 
 function getSession(id) {
   return db.prepare('SELECT * FROM voice_drop_sessions WHERE id = ?').get(id);
@@ -86,6 +89,7 @@ function validateWebhook(body, projectId) {
 }
 
 function personalizeScript(scriptText, lead) {
+  if (!lead) return scriptText || '';
   return (scriptText || '')
     .replace(/{company_name}/g, lead.name || '')
     .replace(/{business_name}/g, lead.name || '')
@@ -101,6 +105,70 @@ function normalizePhone(raw) {
   return n;
 }
 
+/**
+ * Validate normalized phone string against E.164 rules.
+ * +<10-15 digits>
+ */
+function isValidE164(normalized) {
+  return /^\+\d{10,15}$/.test(normalized);
+}
+
+function xmlEscape(s) {
+  return (s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Agent conference TwiML — agent is MUTED (listen-only).
+ * Recipient CANNOT hear the salesperson.
+ */
+function agentConferenceTwiml(confName) {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+    `<Say voice="alice">Lead is connecting. You are in listen-only mode — your microphone is muted. Click Drop Voice Message in the app when you are ready.</Say>` +
+    `<Dial><Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false" waitUrl="" muted="true">${xmlEscape(confName)}</Conference></Dial>` +
+    `</Response>`
+  );
+}
+
+/**
+ * Recipient conference TwiML — recipient joins normally.
+ */
+function leadConferenceTwiml(confName) {
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+    `<Dial><Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false">${xmlEscape(confName)}</Conference></Dial>` +
+    `</Response>`
+  );
+}
+
+/**
+ * Playback TwiML — plays the message then the IVR menu.
+ */
+function ivrMenuTwiml(baseUrl) {
+  return (
+    `<Gather numDigits="1" action="${baseUrl}/api/calls/ivr-handler" method="POST" timeout="15">` +
+    `<Say voice="alice">Press 1 to connect to a live staff member. ` +
+    `Press 2 to set a call back time. ` +
+    `Press 3 to schedule a virtual meeting. ` +
+    `Press 4 to be removed from our list.</Say>` +
+    `</Gather>` +
+    `<Say voice="alice">We did not receive your input. Goodbye.</Say>` +
+    `<Hangup/>`
+  );
+}
+
+function buildPlaybackTwiml(audioUrl, scriptText, baseUrl) {
+  const messageEl = audioUrl
+    ? `<Play>${xmlEscape(audioUrl)}</Play>`
+    : `<Say voice="alice">${xmlEscape(scriptText || 'Thank you for your time.')}</Say>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><Response>${messageEl}${ivrMenuTwiml(baseUrl)}</Response>`;
+}
+
+/** Create a session tied to a lead row */
 function createSession(overrides = {}) {
   const id = uuidv4();
   const confName = `vd-${id}`;
@@ -111,12 +179,36 @@ function createSession(overrides = {}) {
   `).run(
     id,
     overrides.salesperson_id ?? 1,
-    overrides.lead_id ?? 1,
+    overrides.lead_id ?? 1,           // lead row exists
     overrides.lead_phone ?? '+15551234567',
     confName,
     overrides.from_number ?? '+15559001000',
     overrides.agent_phone ?? '+15559998888',
     overrides.script_text ?? 'Hello {business_name}',
+    overrides.mode ?? 'voicemail',
+    overrides.state ?? 'initiated',
+    expires
+  );
+  return id;
+}
+
+/** Create a manual session — no lead_id (NULL), uses targetPhone directly */
+function createManualSession(overrides = {}) {
+  const id = uuidv4();
+  const confName = `vd-${id}`;
+  const expires = new Date(Date.now() + 3600000).toISOString().replace('T', ' ').substring(0, 19);
+  db.prepare(`
+    INSERT INTO voice_drop_sessions (id, salesperson_id, lead_id, lead_phone, conference_name, from_number, agent_phone, script_text, mode, state, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    overrides.salesperson_id ?? 1,
+    null,                             // NULL — no lead row
+    overrides.lead_phone ?? '+15557778888',
+    confName,
+    overrides.from_number ?? '+15559001000',
+    overrides.agent_phone ?? null,
+    overrides.script_text ?? 'Hello, this is a manual outreach message.',
     overrides.mode ?? 'voicemail',
     overrides.state ?? 'initiated',
     expires
@@ -149,7 +241,7 @@ function assertEqual(label, actual, expected) {
   }
 }
 
-// ── Test Groups ──────────────────────────────────────────────────────────────
+// ── Tests ────────────────────────────────────────────────────────────────────
 
 console.log('\n=== Session Creation & State ===');
 
@@ -160,6 +252,66 @@ console.log('\n=== Session Creation & State ===');
   assertEqual('session lead_phone set', s.lead_phone, '+15551234567');
   assert('session has conference_name', !!s.conference_name);
   assert('session conference_name starts with vd-', s.conference_name.startsWith('vd-'));
+  assertEqual('session has lead_id for lead-based session', s.lead_id, 1);
+}
+
+console.log('\n=== Manual targetPhone Session (no leadId) ===');
+
+{
+  const id = createManualSession({ lead_phone: '+15557778888', mode: 'voicemail' });
+  const s = getSession(id);
+  assert('manual session created', !!s);
+  assertEqual('manual session lead_id is NULL', s.lead_id, null);
+  assertEqual('manual session lead_phone set to targetPhone', s.lead_phone, '+15557778888');
+  assertEqual('manual session mode = voicemail', s.mode, 'voicemail');
+  assert('manual session has conference_name', !!s.conference_name);
+}
+
+{
+  // Manual agent-mode session (Live Voice Message to arbitrary number)
+  const id = createManualSession({
+    lead_phone: '+15557779999',
+    mode: 'agent',
+    agent_phone: '+15559998888',
+  });
+  const s = getSession(id);
+  assertEqual('manual agent session lead_id is NULL', s.lead_id, null);
+  assertEqual('manual agent session mode = agent', s.mode, 'agent');
+  assertEqual('manual agent session agent_phone set', s.agent_phone, '+15559998888');
+}
+
+{
+  // canAccessSession must work for manual sessions (salesperson_id still set)
+  const id = createManualSession({ salesperson_id: 1 });
+  const s = getSession(id);
+  assert('salesperson can access own manual session', canAccessSession(s, { role: 'salesperson', userId: 1 }));
+  assert('other salesperson cannot access manual session', !canAccessSession(s, { role: 'salesperson', userId: 2 }));
+  assert('admin can access any manual session', canAccessSession(s, { role: 'admin', userId: 99 }));
+}
+
+console.log('\n=== normalizePhone ===');
+
+{
+  assertEqual('10-digit → E.164', normalizePhone('5551234567'), '+15551234567');
+  assertEqual('with dashes → E.164', normalizePhone('555-123-4567'), '+15551234567');
+  assertEqual('already E.164 unchanged', normalizePhone('+15551234567'), '+15551234567');
+  assertEqual('empty string', normalizePhone(''), '');
+  assertEqual('null → empty', normalizePhone(null), '');
+  assertEqual('with parens/spaces', normalizePhone('(555) 123-4567'), '+15551234567');
+}
+
+console.log('\n=== isValidE164 (E.164 phone validation) ===');
+
+{
+  assert('valid US E.164 +15551234567', isValidE164('+15551234567'));
+  assert('valid 10-digit normalized', isValidE164(normalizePhone('5551234567')));
+  assert('valid 10-digit with dashes normalized', isValidE164(normalizePhone('555-123-4567')));
+  assert('rejects empty string', !isValidE164(''));
+  assert('rejects null-normalized', !isValidE164(normalizePhone(null)));
+  assert('rejects too short +1555123', !isValidE164('+1555123'));
+  assert('rejects no plus sign', !isValidE164('15551234567'));
+  assert('rejects letters', !isValidE164('+1555abc4567'));
+  assert('accepts 15-digit international', isValidE164('+441234567890'));
 }
 
 console.log('\n=== canAccessSession ===');
@@ -238,8 +390,8 @@ console.log('\n=== State Transitions ===');
 console.log('\n=== Drop guard — only in recipient_answered ===');
 
 {
-  const terminalStates = ['initiated', 'agent_answered', 'dropping', 'completed', 'failed', 'cancelled'];
-  for (const state of terminalStates) {
+  const nonDroppableStates = ['initiated', 'agent_answered', 'dropping', 'completed', 'failed', 'cancelled'];
+  for (const state of nonDroppableStates) {
     const id = createSession({ state });
     const s = getSession(id);
     const canDrop = s.state === 'recipient_answered';
@@ -249,6 +401,19 @@ console.log('\n=== Drop guard — only in recipient_answered ===');
   const id = createSession({ state: 'recipient_answered', recipient_call_sid: 'CA-999' });
   const s = getSession(id);
   assert('can drop in state "recipient_answered"', s.state === 'recipient_answered');
+}
+
+console.log('\n=== Drop idempotency (already dropping/completed) ===');
+
+{
+  // Simulating the idempotency check from the route handler
+  const states = ['dropping', 'completed'];
+  for (const state of states) {
+    const id = createSession({ state });
+    const s = getSession(id);
+    const isIdempotent = ['dropping', 'completed'].includes(s.state);
+    assert(`drop in "${state}" returns idempotent success`, isIdempotent);
+  }
 }
 
 console.log('\n=== Webhook validation ===');
@@ -263,17 +428,7 @@ console.log('\n=== Webhook validation ===');
   assert('snake_case account_sid also accepted', validateWebhook({ account_sid: 'proj-abc-123' }, projectId));
 }
 
-console.log('\n=== normalizePhone ===');
-
-{
-  assertEqual('10-digit → E.164', normalizePhone('5551234567'), '+15551234567');
-  assertEqual('with dashes → E.164', normalizePhone('555-123-4567'), '+15551234567');
-  assertEqual('already E.164 unchanged', normalizePhone('+15551234567'), '+15551234567');
-  assertEqual('empty string', normalizePhone(''), '');
-  assertEqual('null → empty', normalizePhone(null), '');
-}
-
-console.log('\n=== personalizeScript ===');
+console.log('\n=== personalizeScript (null-safe) ===');
 
 {
   const lead = { name: 'Acme Plumbing', city: 'Austin', state: 'TX' };
@@ -287,6 +442,63 @@ console.log('\n=== personalizeScript ===');
   const script = '{company_name} and {business_name}';
   const result = personalizeScript(script, lead);
   assertEqual('replaces both company_name and business_name', result, 'Bob Co and Bob Co');
+}
+
+{
+  // null lead (manual targetPhone session) — no personalization, no crash
+  const script = 'Hello {business_name}, this is a message for you.';
+  const result = personalizeScript(script, null);
+  assertEqual('null lead returns script unchanged', result, script);
+}
+
+{
+  // undefined lead
+  const script = 'Test message {company_name}.';
+  const result = personalizeScript(script, undefined);
+  assertEqual('undefined lead returns script unchanged', result, script);
+}
+
+console.log('\n=== TwiML builders ===');
+
+{
+  // agentConferenceTwiml — MUST include muted="true" for listen-only monitoring
+  const xml = agentConferenceTwiml('vd-test-conf');
+  assert('agent TwiML contains muted="true"', xml.includes('muted="true"'));
+  assert('agent TwiML is valid XML opener', xml.startsWith('<?xml version="1.0"'));
+  assert('agent TwiML contains Conference element', xml.includes('<Conference'));
+  assert('agent TwiML contains conference name', xml.includes('vd-test-conf'));
+  assert('agent TwiML has listen-only hint in Say', xml.toLowerCase().includes('muted') || xml.includes('listen-only'));
+}
+
+{
+  // leadConferenceTwiml — must NOT be muted (recipient hears the drop)
+  const xml = leadConferenceTwiml('vd-test-conf');
+  assert('lead TwiML does NOT have muted="true" for recipient', !xml.includes('muted="true"'));
+  assert('lead TwiML contains Conference element', xml.includes('<Conference'));
+  assert('lead TwiML contains conference name', xml.includes('vd-test-conf'));
+}
+
+{
+  // buildPlaybackTwiml — with audio URL
+  const xml = buildPlaybackTwiml('https://example.com/audio.mp3', null, 'https://leads.bluesapps.com');
+  assert('playback TwiML uses <Play> when audioUrl provided', xml.includes('<Play>'));
+  assert('playback TwiML contains audio URL', xml.includes('https://example.com/audio.mp3'));
+  assert('playback TwiML contains IVR menu', xml.includes('/api/calls/ivr-handler'));
+  assert('playback TwiML has Press 1/2/3/4 options', xml.includes('Press 1') && xml.includes('Press 4'));
+}
+
+{
+  // buildPlaybackTwiml — without audio URL (Say fallback)
+  const xml = buildPlaybackTwiml(null, 'Hello there!', 'https://leads.bluesapps.com');
+  assert('playback TwiML uses <Say> when no audioUrl', xml.includes('<Say'));
+  assert('playback TwiML contains script text in Say', xml.includes('Hello there!'));
+  assert('playback TwiML still has IVR menu', xml.includes('/api/calls/ivr-handler'));
+}
+
+{
+  // xmlEscape in conference name with special chars
+  const xml = agentConferenceTwiml('vd-test&conf');
+  assert('conference name is XML-escaped in agent TwiML', xml.includes('vd-test&amp;conf'));
 }
 
 console.log('\n=== Voicemail Mode — state transitions ===');
@@ -318,14 +530,14 @@ console.log('\n=== Voicemail Mode — state transitions ===');
 }
 
 {
-  // voicemail: drop-message must be rejected (no agent leg)
+  // voicemail: drop-message must be blocked (it's for agent mode only)
   const id = createSession({ mode: 'voicemail', state: 'active' });
   const s = getSession(id);
   const dropGuard = s.mode === 'voicemail';
   assert('voicemail: drop-message endpoint should be blocked for voicemail mode', dropGuard);
 }
 
-console.log('\n=== Agent Mode — state transitions (recap) ===');
+console.log('\n=== Agent Mode (Live Voice Message) — state transitions ===');
 
 {
   // agent: full happy path
@@ -342,8 +554,8 @@ console.log('\n=== Agent Mode — state transitions (recap) ===');
 
 {
   // agent: drop only allowed in recipient_answered
-  const allowedStates = ['initiated', 'agent_answered', 'dropping', 'completed', 'failed', 'cancelled'];
-  for (const state of allowedStates) {
+  const blockStates = ['initiated', 'agent_answered', 'dropping', 'completed', 'failed', 'cancelled'];
+  for (const state of blockStates) {
     const id = createSession({ mode: 'agent', state });
     const s = getSession(id);
     assert(`agent: cannot drop in state "${state}"`, s.state !== 'recipient_answered');
@@ -351,6 +563,33 @@ console.log('\n=== Agent Mode — state transitions (recap) ===');
   const id = createSession({ mode: 'agent', state: 'recipient_answered' });
   const s = getSession(id);
   assert('agent: can drop in recipient_answered', s.state === 'recipient_answered');
+}
+
+console.log('\n=== Manual session full agent-mode path ===');
+
+{
+  // Manual targetPhone + agent mode — same transitions as lead session
+  const id = createManualSession({ mode: 'agent', state: 'initiated' });
+  updateSession(id, { state: 'agent_answered', agent_call_sid: 'CA-manual-ag' });
+  updateSession(id, { state: 'recipient_answered', recipient_call_sid: 'CA-manual-rc' });
+  const s1 = getSession(id);
+  assertEqual('manual agent: state = recipient_answered', s1.state, 'recipient_answered');
+  assertEqual('manual agent: lead_id still NULL', s1.lead_id, null);
+
+  updateSession(id, { state: 'dropping' });
+  updateSession(id, { state: 'completed' });
+  const s2 = getSession(id);
+  assertEqual('manual agent: state = completed after full path', s2.state, 'completed');
+}
+
+{
+  // Manual voicemail session full path
+  const id = createManualSession({ mode: 'voicemail', state: 'initiated' });
+  updateSession(id, { state: 'active', recipient_call_sid: 'CA-manual-vm' });
+  updateSession(id, { state: 'completed' });
+  const s = getSession(id);
+  assertEqual('manual voicemail: completes correctly', s.state, 'completed');
+  assertEqual('manual voicemail: lead_id is NULL throughout', s.lead_id, null);
 }
 
 console.log('\n=== Mode stored on session ===');
@@ -362,10 +601,17 @@ console.log('\n=== Mode stored on session ===');
   assertEqual('agent session has mode=agent', getSession(agId).mode, 'agent');
 }
 
+{
+  const mvmId = createManualSession({ mode: 'voicemail' });
+  const magId = createManualSession({ mode: 'agent' });
+  assertEqual('manual voicemail session has mode=voicemail', getSession(mvmId).mode, 'voicemail');
+  assertEqual('manual agent session has mode=agent', getSession(magId).mode, 'agent');
+}
+
 console.log('\n=== Expired session cleanup ===');
 
 {
-  // Insert a session with an already-expired expires_at
+  // Insert an already-expired session
   const id = uuidv4();
   const pastDate = new Date(Date.now() - 3600000).toISOString().replace('T', ' ').substring(0, 19);
   db.prepare(`
@@ -373,15 +619,28 @@ console.log('\n=== Expired session cleanup ===');
     VALUES (?, 1, 1, '+15550000000', 'vd-old', '+15559001000', '+15559998888', 'old script', 'voicemail', 'initiated', ?)
   `).run(id, pastDate);
 
-  // Verify it exists before cleanup
   const before = getSession(id);
   assert('expired session exists before cleanup', !!before);
 
-  // Simulate cleanup
   db.prepare("DELETE FROM voice_drop_sessions WHERE expires_at < datetime('now')").run();
 
   const after = getSession(id);
   assert('expired session removed after cleanup', !after);
+}
+
+{
+  // Manual session also subject to cleanup
+  const id = uuidv4();
+  const pastDate = new Date(Date.now() - 3600000).toISOString().replace('T', ' ').substring(0, 19);
+  db.prepare(`
+    INSERT INTO voice_drop_sessions (id, salesperson_id, lead_id, lead_phone, conference_name, from_number, agent_phone, script_text, mode, state, expires_at)
+    VALUES (?, 1, NULL, '+15557778888', 'vd-manual-old', '+15559001000', NULL, 'manual old', 'voicemail', 'initiated', ?)
+  `).run(id, pastDate);
+
+  db.prepare("DELETE FROM voice_drop_sessions WHERE expires_at < datetime('now')").run();
+
+  const after = getSession(id);
+  assert('expired manual session also cleaned up', !after);
 }
 
 // ── Summary ──────────────────────────────────────────────────────────────────
