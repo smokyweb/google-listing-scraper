@@ -195,7 +195,8 @@ db.exec(`
     state TEXT DEFAULT 'initiated',
     error_msg TEXT,
     created_at TEXT DEFAULT (datetime('now')),
-    expires_at TEXT
+    expires_at TEXT,
+    mode TEXT DEFAULT 'voicemail'
   );
 `);
 

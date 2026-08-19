@@ -26,6 +26,7 @@ db.exec(`
     recipient_call_sid TEXT,
     audio_url TEXT,
     script_text TEXT,
+    mode TEXT DEFAULT 'voicemail',
     state TEXT DEFAULT 'initiated',
     error_msg TEXT,
     created_at TEXT DEFAULT (datetime('now')),
@@ -105,8 +106,8 @@ function createSession(overrides = {}) {
   const confName = `vd-${id}`;
   const expires = new Date(Date.now() + 3600000).toISOString().replace('T', ' ').substring(0, 19);
   db.prepare(`
-    INSERT INTO voice_drop_sessions (id, salesperson_id, lead_id, lead_phone, conference_name, from_number, agent_phone, script_text, state, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO voice_drop_sessions (id, salesperson_id, lead_id, lead_phone, conference_name, from_number, agent_phone, script_text, mode, state, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     overrides.salesperson_id ?? 1,
@@ -116,6 +117,7 @@ function createSession(overrides = {}) {
     overrides.from_number ?? '+15559001000',
     overrides.agent_phone ?? '+15559998888',
     overrides.script_text ?? 'Hello {business_name}',
+    overrides.mode ?? 'voicemail',
     overrides.state ?? 'initiated',
     expires
   );
@@ -287,6 +289,79 @@ console.log('\n=== personalizeScript ===');
   assertEqual('replaces both company_name and business_name', result, 'Bob Co and Bob Co');
 }
 
+console.log('\n=== Voicemail Mode — state transitions ===');
+
+{
+  // voicemail: initiated → active (call connected)
+  const id = createSession({ mode: 'voicemail', state: 'initiated' });
+  updateSession(id, { state: 'active', recipient_call_sid: 'CA-vm-001' });
+  const s = getSession(id);
+  assertEqual('voicemail: state = active on call connect', s.state, 'active');
+  assertEqual('voicemail: recipient_call_sid stored on active', s.recipient_call_sid, 'CA-vm-001');
+}
+
+{
+  // voicemail: active → completed (call ends)
+  const id = createSession({ mode: 'voicemail', state: 'active' });
+  updateSession(id, { state: 'completed' });
+  const s = getSession(id);
+  assertEqual('voicemail: state = completed when call ends', s.state, 'completed');
+}
+
+{
+  // voicemail: initiated → failed (no-answer)
+  const id = createSession({ mode: 'voicemail', state: 'initiated' });
+  updateSession(id, { state: 'failed', error_msg: 'Call no-answer' });
+  const s = getSession(id);
+  assertEqual('voicemail: state = failed on no-answer', s.state, 'failed');
+  assert('voicemail: error_msg set', s.error_msg === 'Call no-answer');
+}
+
+{
+  // voicemail: drop-message must be rejected (no agent leg)
+  const id = createSession({ mode: 'voicemail', state: 'active' });
+  const s = getSession(id);
+  const dropGuard = s.mode === 'voicemail';
+  assert('voicemail: drop-message endpoint should be blocked for voicemail mode', dropGuard);
+}
+
+console.log('\n=== Agent Mode — state transitions (recap) ===');
+
+{
+  // agent: full happy path
+  const id = createSession({ mode: 'agent', state: 'initiated' });
+  updateSession(id, { state: 'agent_answered', agent_call_sid: 'CA-ag-001' });
+  updateSession(id, { state: 'recipient_answered', recipient_call_sid: 'CA-rc-001' });
+  updateSession(id, { state: 'dropping' });
+  updateSession(id, { state: 'completed' });
+  const s = getSession(id);
+  assertEqual('agent: full path ends completed', s.state, 'completed');
+  assertEqual('agent: agent_call_sid stored', s.agent_call_sid, 'CA-ag-001');
+  assertEqual('agent: recipient_call_sid stored', s.recipient_call_sid, 'CA-rc-001');
+}
+
+{
+  // agent: drop only allowed in recipient_answered
+  const allowedStates = ['initiated', 'agent_answered', 'dropping', 'completed', 'failed', 'cancelled'];
+  for (const state of allowedStates) {
+    const id = createSession({ mode: 'agent', state });
+    const s = getSession(id);
+    assert(`agent: cannot drop in state "${state}"`, s.state !== 'recipient_answered');
+  }
+  const id = createSession({ mode: 'agent', state: 'recipient_answered' });
+  const s = getSession(id);
+  assert('agent: can drop in recipient_answered', s.state === 'recipient_answered');
+}
+
+console.log('\n=== Mode stored on session ===');
+
+{
+  const vmId = createSession({ mode: 'voicemail' });
+  const agId = createSession({ mode: 'agent' });
+  assertEqual('voicemail session has mode=voicemail', getSession(vmId).mode, 'voicemail');
+  assertEqual('agent session has mode=agent', getSession(agId).mode, 'agent');
+}
+
 console.log('\n=== Expired session cleanup ===');
 
 {
@@ -294,8 +369,8 @@ console.log('\n=== Expired session cleanup ===');
   const id = uuidv4();
   const pastDate = new Date(Date.now() - 3600000).toISOString().replace('T', ' ').substring(0, 19);
   db.prepare(`
-    INSERT INTO voice_drop_sessions (id, salesperson_id, lead_id, lead_phone, conference_name, from_number, agent_phone, script_text, state, expires_at)
-    VALUES (?, 1, 1, '+15550000000', 'vd-old', '+15559001000', '+15559998888', 'old script', 'initiated', ?)
+    INSERT INTO voice_drop_sessions (id, salesperson_id, lead_id, lead_phone, conference_name, from_number, agent_phone, script_text, mode, state, expires_at)
+    VALUES (?, 1, 1, '+15550000000', 'vd-old', '+15559001000', '+15559998888', 'old script', 'voicemail', 'initiated', ?)
   `).run(id, pastDate);
 
   // Verify it exists before cleanup

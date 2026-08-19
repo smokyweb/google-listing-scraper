@@ -28,8 +28,9 @@ export default function PhoneCalls() {
   const isSalesperson = userRole === 'salesperson';
   const [selectedIds, setSelectedIds] = useState(new Set());
 
-  // Voice Drop state
-  const [voiceDropLead, setVoiceDropLead] = useState(null); // lead to start drop for
+  // Voice Drop modal state
+  const [voiceDropLead, setVoiceDropLead] = useState(null);
+  const [voiceDropMode, setVoiceDropMode] = useState('voicemail'); // 'voicemail' | 'agent'
   const [voiceDropOpen, setVoiceDropOpen] = useState(false);
 
   const filterByScrape = (scrapeId, all) => scrapeId ? all.filter(l => String(l.scrape_id) === String(scrapeId)) : all;
@@ -130,10 +131,11 @@ export default function PhoneCalls() {
     setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
 
-  const openVoiceDrop = useCallback((lead, e) => {
+  const openVoiceDrop = useCallback((lead, mode, e) => {
     e.stopPropagation();
     e.preventDefault();
     setVoiceDropLead(lead);
+    setVoiceDropMode(mode);
     setVoiceDropOpen(true);
   }, []);
 
@@ -315,10 +317,18 @@ export default function PhoneCalls() {
                 {lead.source === 'manual' && <span className="text-xs text-purple-400 shrink-0">manual</span>}
                 {lead.email_status === 'sent' && <span className="text-xs text-blue-400 shrink-0" title="Emailed">✉</span>}
                 {lead.call_status === 'called' && <span className="text-xs text-green-400 shrink-0" title="Called">📞</span>}
-                {/* Agent-assisted voice drop button */}
+                {/* Voicemail Drop — system calls lead directly, auto-plays script */}
                 <button
-                  onClick={e => openVoiceDrop(lead, e)}
-                  title="Agent-assisted voice drop — call salesperson first, then lead"
+                  onClick={e => openVoiceDrop(lead, 'voicemail', e)}
+                  title="Voicemail Drop — system calls lead directly, plays script automatically"
+                  className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded text-blue-400 hover:bg-blue-900/40 hover:text-blue-300 transition-all"
+                >
+                  📱
+                </button>
+                {/* Agent-Audio Assisted Drop — salesperson called first, hears lead live */}
+                <button
+                  onClick={e => openVoiceDrop(lead, 'agent', e)}
+                  title="Agent-Audio Assisted Drop — your forward number is called first, you hear the lead, then manually drop the message"
                   className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded text-yellow-400 hover:bg-yellow-900/40 hover:text-yellow-300 transition-all"
                 >
                   🎙️
@@ -338,6 +348,7 @@ export default function PhoneCalls() {
         voiceScripts={voiceScripts}
         selectedScriptId={selectedScriptId}
         scriptText={script}
+        mode={voiceDropMode}
         onClose={() => { setVoiceDropOpen(false); setVoiceDropLead(null); }}
       />
     )}
