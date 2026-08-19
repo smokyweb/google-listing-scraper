@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiFetch } from '../api';
 import AIScriptBox from '../components/AIScriptBox';
+import VoiceDropModal from '../components/VoiceDropModal';
 
 const PAUSE_OPTIONS = [
   { label: 'Short pause', insert: ',' },
@@ -26,6 +27,10 @@ export default function PhoneCalls() {
   const userRole = localStorage.getItem('gls_role') || 'admin';
   const isSalesperson = userRole === 'salesperson';
   const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // Voice Drop state
+  const [voiceDropLead, setVoiceDropLead] = useState(null); // lead to start drop for
+  const [voiceDropOpen, setVoiceDropOpen] = useState(false);
 
   const filterByScrape = (scrapeId, all) => scrapeId ? all.filter(l => String(l.scrape_id) === String(scrapeId)) : all;
   const [calling, setCalling] = useState(false);
@@ -125,12 +130,20 @@ export default function PhoneCalls() {
     setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
 
+  const openVoiceDrop = useCallback((lead, e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setVoiceDropLead(lead);
+    setVoiceDropOpen(true);
+  }, []);
+
   const toggleAll = () => {
     if (selectedIds.size === leads.length) setSelectedIds(new Set());
     else setSelectedIds(new Set(leads.map(l => l.id)));
   };
 
   return (
+    <>
     <div>
       <h2 className="text-2xl font-bold text-white mb-6">Phone Calls</h2>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -290,22 +303,44 @@ export default function PhoneCalls() {
           </div>
           <div className="max-h-[500px] overflow-y-auto space-y-1">
             {leads.map(lead => (
-              <label key={lead.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-800 rounded-lg cursor-pointer">
-                <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)}
-                  className="rounded bg-gray-800 border-gray-600" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white truncate">{lead.name}</p>
-                  <p className="text-xs text-gray-500">{lead.phone}</p>
-                </div>
+              <div key={lead.id} className="flex items-center gap-2 px-3 py-2 hover:bg-gray-800 rounded-lg group">
+                <label className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer">
+                  <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)}
+                    className="rounded bg-gray-800 border-gray-600 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white truncate">{lead.name}</p>
+                    <p className="text-xs text-gray-500">{lead.phone}</p>
+                  </div>
+                </label>
                 {lead.source === 'manual' && <span className="text-xs text-purple-400 shrink-0">manual</span>}
                 {lead.email_status === 'sent' && <span className="text-xs text-blue-400 shrink-0" title="Emailed">✉</span>}
                 {lead.call_status === 'called' && <span className="text-xs text-green-400 shrink-0" title="Called">📞</span>}
-              </label>
+                {/* Agent-assisted voice drop button */}
+                <button
+                  onClick={e => openVoiceDrop(lead, e)}
+                  title="Agent-assisted voice drop — call salesperson first, then lead"
+                  className="shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded text-yellow-400 hover:bg-yellow-900/40 hover:text-yellow-300 transition-all"
+                >
+                  🎙️
+                </button>
+              </div>
             ))}
             {leads.length === 0 && <p className="text-gray-500 text-sm p-4 text-center">No leads with phone numbers yet.</p>}
           </div>
         </div>
       </div>
     </div>
+
+    {/* Voice Drop Modal */}
+    {voiceDropOpen && voiceDropLead && (
+      <VoiceDropModal
+        lead={voiceDropLead}
+        voiceScripts={voiceScripts}
+        selectedScriptId={selectedScriptId}
+        scriptText={script}
+        onClose={() => { setVoiceDropOpen(false); setVoiceDropLead(null); }}
+      />
+    )}
+    </>
   );
 }

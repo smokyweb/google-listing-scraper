@@ -178,6 +178,27 @@ db.exec(`
   );
 `);
 
+// voice_drop_sessions table for agent-assisted voice drop feature
+db.exec(`
+  CREATE TABLE IF NOT EXISTS voice_drop_sessions (
+    id TEXT PRIMARY KEY,
+    salesperson_id INTEGER,
+    lead_id INTEGER,
+    lead_phone TEXT,
+    conference_name TEXT,
+    from_number TEXT,
+    agent_phone TEXT,
+    agent_call_sid TEXT,
+    recipient_call_sid TEXT,
+    audio_url TEXT,
+    script_text TEXT,
+    state TEXT DEFAULT 'initiated',
+    error_msg TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    expires_at TEXT
+  );
+`);
+
 // Migrations — add columns to existing tables if they don't exist
 try { db.exec('ALTER TABLE leads ADD COLUMN scrape_id INTEGER REFERENCES scrapes(id)'); } catch(e) {}
 try { db.exec('ALTER TABLE leads ADD COLUMN email_scraped INTEGER DEFAULT 0'); } catch(e) {}

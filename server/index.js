@@ -42,6 +42,7 @@ app.use('/api/sales-users', require('./routes/sales-users'));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/dialer', require('./routes/dialer'));
+app.use('/api/voice-drop', require('./routes/voice-drop'));
 app.use('/api/email-senders', require('./routes/email-senders'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/salesperson-calendar', require('./routes/salesperson-calendar'));
