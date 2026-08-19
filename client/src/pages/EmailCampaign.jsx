@@ -223,7 +223,7 @@ export default function EmailCampaign() {
                   className="px-1.5 py-0.5 bg-indigo-900/50 hover:bg-indigo-800/50 text-indigo-300 rounded text-xs font-mono transition-colors">{s.label}</button>
               ))}
             </div>
-            <textarea ref={bodyRef} value={body} onChange={e => setBody(e.target.value)} rows={8}
+            <textarea ref={bodyRef} value={typeof body === 'string' ? body : ''} onChange={e => setBody(e.target.value)} rows={8}
               placeholder="<p>Hi {business_name},</p><p>We help businesses in {city}, {state}...</p>"
               className={`${inp} font-mono text-sm resize-none`} />
           </div>
@@ -241,12 +241,38 @@ export default function EmailCampaign() {
           {showPreview && (
             <div className="p-4 bg-gray-800 rounded-lg">
               <p className="text-xs text-gray-500 mb-2">Preview (sample data):</p>
-              <p className="text-sm text-gray-300 mb-2"><strong>Subject:</strong> {subject.replace(/{business_name}/g,'Acme Plumbing').replace(/{city}/g,'Austin').replace(/{state}/g,'TX')}</p>
-              <div className="text-sm text-gray-300 border-t border-gray-700 pt-2" dangerouslySetInnerHTML={{ __html: body.replace(/{business_name}/g,'Acme Plumbing').replace(/{city}/g,'Austin').replace(/{state}/g,'TX') }} />
+              <p className="text-sm text-gray-300 mb-2">
+                <strong>Subject:</strong>{' '}
+                {(subject || '').replace(/{business_name}/g,'Acme Plumbing').replace(/{city}/g,'Austin').replace(/{state}/g,'TX')}
+              </p>
+              {body && typeof body === 'string' ? (
+                <div
+                  className="text-sm text-gray-300 border-t border-gray-700 pt-2"
+                  dangerouslySetInnerHTML={{
+                    __html: body
+                      .replace(/{business_name}/g, 'Acme Plumbing')
+                      .replace(/{city}/g, 'Austin')
+                      .replace(/{state}/g, 'TX')
+                      .replace(/{keyword}/g, 'plumbing')
+                      .replace(/{company_name}/g, 'Acme Plumbing'),
+                  }}
+                />
+              ) : (
+                <p className="text-xs text-gray-500 border-t border-gray-700 pt-2 italic">No email body yet.</p>
+              )}
             </div>
           )}
           {/* AI Script Generator */}
-          <AIScriptBox type="email" onGenerated={b => setBody(b)} placeholder='e.g. "Professional follow-up for roofing companies, mention storm damage"' />
+          <AIScriptBox
+            type="email"
+            onGenerated={generated => {
+              // Defensive guard: only accept a non-empty string
+              if (typeof generated === 'string' && generated.trim()) {
+                setBody(generated);
+              }
+            }}
+            placeholder='e.g. "Professional follow-up for roofing companies, mention storm damage"'
+          />
 
           {result && (
             <div className={`p-4 rounded-lg text-sm ${result.error ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>

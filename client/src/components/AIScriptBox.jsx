@@ -15,10 +15,32 @@ export default function AIScriptBox({ type, onGenerated, placeholder }) {
         method: 'POST',
         body: JSON.stringify({ prompt: prompt.trim(), type }),
       });
-      onGenerated(data.script);
+
+      // Validate the response payload before passing upstream
+      const script = data?.script;
+      if (typeof script !== 'string') {
+        setError('AI returned an unexpected response format. Please try again.');
+        return;
+      }
+      if (!script.trim()) {
+        setError('AI returned an empty script. Try rephrasing your prompt.');
+        return;
+      }
+
+      onGenerated(script);
       setPrompt('');
     } catch (err) {
-      setError(err.message);
+      // Provide friendlier messages for known error conditions
+      const msg = err.message || 'Unknown error';
+      if (msg.includes('not configured') || msg.includes('API key')) {
+        setError('⚠ Add your Gemini API key in Settings to use AI generation.');
+      } else if (msg.includes('timed out') || msg.includes('504')) {
+        setError('⏱ Request timed out — Gemini took too long. Please try again.');
+      } else if (msg.includes('safety') || msg.includes('422')) {
+        setError('⚠ AI declined this prompt due to safety filters. Try rephrasing.');
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -34,7 +56,7 @@ export default function AIScriptBox({ type, onGenerated, placeholder }) {
         <input
           value={prompt}
           onChange={e => setPrompt(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleGenerate()}
+          onKeyDown={e => e.key === 'Enter' && !loading && handleGenerate()}
           placeholder={placeholder || 'Describe the script you want... e.g. "Friendly outreach for plumbers in Texas"'}
           className="flex-1 px-3 py-1.5 bg-indigo-950/60 border border-indigo-700/50 rounded-lg text-white text-sm placeholder-indigo-500 focus:outline-none focus:border-indigo-500"
         />
@@ -43,10 +65,12 @@ export default function AIScriptBox({ type, onGenerated, placeholder }) {
           disabled={loading || !prompt.trim()}
           className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 whitespace-nowrap"
         >
-          {loading ? '✨ Generating...' : '✨ Generate'}
+          {loading ? '⏳ Generating...' : '✨ Generate'}
         </button>
       </div>
-      {error && <p className="text-xs text-red-400 mt-1.5">{error.includes('not configured') ? '⚠ Add your Gemini API key in Settings to use AI generation.' : error}</p>}
+      {error && (
+        <p className="text-xs text-red-400 mt-1.5 leading-relaxed">{error}</p>
+      )}
     </div>
   );
 }
