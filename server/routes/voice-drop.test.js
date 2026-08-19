@@ -643,6 +643,33 @@ console.log('\n=== Expired session cleanup ===');
   assert('expired manual session also cleaned up', !after);
 }
 
+// ── normalizePhone / isValidE164 (also tested in dialer.test.js) ────────────
+
+console.log('\n=== normalizePhone & isValidE164 (voice-drop copy) ===');
+
+{
+  const cases = [
+    // [input, expectedNormalized, expectedValid]
+    [null,            '',               false],
+    ['',              '',               false],
+    ['2125551234',    '+12125551234',   true],
+    ['212-555-1234',  '+12125551234',   true],
+    ['(212) 555-1234','+12125551234',   true],
+    ['12125551234',   '+12125551234',   true],
+    ['+12125551234',  '+12125551234',   true],
+    ['+447700900123', '+447700900123',  true],
+    ['5551234',       '+5551234',       false], // 7-digit—too short (not prepended)
+    ['garbage',       '+',              false],
+  ];
+
+  for (const [input, expectNorm, expectValid] of cases) {
+    const norm = normalizePhone(input);
+    const valid = isValidE164(norm);
+    assertEqual(`normalizePhone(${JSON.stringify(input)})`, norm, expectNorm);
+    assert(`isValidE164 of normalizePhone(${JSON.stringify(input)}) === ${expectValid}`, valid === expectValid);
+  }
+}
+
 // ── Summary ──────────────────────────────────────────────────────────────────
 
 console.log('\n=== Summary ===');

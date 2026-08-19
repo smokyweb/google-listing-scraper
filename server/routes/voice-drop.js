@@ -359,6 +359,11 @@ router.post('/start', authMiddleware, async (req, res) => {
         }
       }
       leadPhone = normalizePhone(lead.phone);
+      if (!isValidE164(leadPhone)) {
+        return res.status(400).json({
+          error: `Lead phone number "${lead.phone}" is not a valid E.164 number. Please correct it in the lead record.`,
+        });
+      }
     } else {
       // Manual targetPhone — validate
       leadPhone = normalizePhone(targetPhone);
@@ -383,6 +388,14 @@ router.post('/start', authMiddleware, async (req, res) => {
     } else {
       fromNumber = resolveAdminFromNumber(config);
     }
+    // Normalize and validate the From/caller-ID before any call is placed
+    fromNumber = normalizePhone(fromNumber);
+    if (!isValidE164(fromNumber)) {
+      return res.status(400).json({
+        error: `Configured caller-ID "${fromNumber}" is not a valid E.164 number. ` +
+               'Please set a valid SignalWire phone number in Settings.',
+      });
+    }
 
     // ── Resolve agent forward number (agent mode only) ───────────────────────
     let agentPhone = null;
@@ -397,6 +410,12 @@ router.post('/start', authMiddleware, async (req, res) => {
           });
         }
         agentPhone = normalizePhone(forwardNumber);
+        if (!isValidE164(agentPhone)) {
+          return res.status(400).json({
+            error: `Your forward number "${forwardNumber}" is not a valid E.164 number. ` +
+                   'Please update it in your profile.',
+          });
+        }
       } else {
         const transfer =
           getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER;
@@ -407,6 +426,12 @@ router.post('/start', authMiddleware, async (req, res) => {
           });
         }
         agentPhone = normalizePhone(transfer);
+        if (!isValidE164(agentPhone)) {
+          return res.status(400).json({
+            error: `Transfer phone number "${transfer}" in Settings is not a valid E.164 number. ` +
+                   'Please correct it in Settings.',
+          });
+        }
       }
     }
 

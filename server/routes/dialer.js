@@ -26,9 +26,13 @@ function resolveFromNumber(phoneNumberId) {
 function normalizePhone(raw) {
   if (!raw) return '';
   let n = raw.replace(/\D/g, '');
-  if (n.length === 10) n = '1' + n;
+  if (n.length === 10) n = '1' + n;      // US 10-digit → prepend country code
+  // 11-digit starting with '1' is already a US number with country code
   if (!n.startsWith('+')) n = '+' + n;
   return n;
+}
+function isValidE164(normalized) {
+  return /^\+\d{10,15}$/.test(normalized);
 }
 function authHeader(config) {
   return 'Basic ' + Buffer.from(`${config.projectId}:${config.token}`).toString('base64');
@@ -60,7 +64,17 @@ router.post('/call', authMiddleware, async (req, res) => {
     } else {
       fromNumber = resolveFromNumber(fromNumberId);
     }
+    fromNumber = normalizePhone(fromNumber);
     const toNormalized = normalizePhone(toNumber);
+
+    // Validate E.164 before placing any call
+    if (!isValidE164(fromNumber)) {
+      return res.status(400).json({ error: `Invalid From number: "${fromNumber}". Must be E.164 (+1XXXXXXXXXX).` });
+    }
+    if (!isValidE164(toNormalized)) {
+      return res.status(400).json({ error: `Invalid To number: "${toNormalized}". Must be a valid 10-digit US number or E.164.` });
+    }
+
     const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
 
     // Get lead info if leadId provided
@@ -76,13 +90,16 @@ router.post('/call', authMiddleware, async (req, res) => {
     let twiml;
     if (agentNumber) {
       const agentNorm = normalizePhone(agentNumber);
-      // Call the agent first, when they answer connect them to the lead
+      if (!isValidE164(agentNorm)) {
+        return res.status(400).json({ error: `Invalid agent number: "${agentNorm}". Must be E.164.` });
+      }
+      // Agent-first: once the salesperson answers, immediately Dial the recipient.
+      // No keypress required — the old Gather/DTMF gate caused disconnects.
+      const leadLabel = lead ? lead.name || 'your lead' : toNormalized;
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="alice">Connecting you to ${lead ? lead.name || 'your lead' : 'the number'} at ${toNormalized.replace('+1','')}. Press any key to connect.</Say>
-  <Gather numDigits="1" timeout="10">
-    <Pause length="1"/>
-  </Gather>
+  <Say voice="alice">Connecting you to ${leadLabel}. Stand by.</Say>
+  <Pause length="2"/>
   <Dial callerId="${fromNumber}">${toNormalized}</Dial>
 </Response>`;
 
@@ -146,7 +163,15 @@ router.post('/sms', authMiddleware, async (req, res) => {
     } else {
       fromNumber = resolveFromNumber(fromNumberId);
     }
+    fromNumber = normalizePhone(fromNumber);
     const toNormalized = normalizePhone(toNumber);
+
+    if (!isValidE164(fromNumber)) {
+      return res.status(400).json({ error: `Invalid From number: "${fromNumber}". Must be E.164 (+1XXXXXXXXXX).` });
+    }
+    if (!isValidE164(toNormalized)) {
+      return res.status(400).json({ error: `Invalid To number: "${toNormalized}". Must be a valid 10-digit US number or E.164.` });
+    }
 
     if (isMock) {
       return res.json({ success: true, mock: true, message: `[MOCK] Would send SMS to ${toNormalized}` });
