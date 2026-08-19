@@ -293,7 +293,10 @@ function resolveSalespersonNumbers(userId) {
 
 function resolveAdminFromNumber(config) {
   const def = db.prepare('SELECT number FROM phone_numbers WHERE is_default=1 LIMIT 1').get();
-  return def?.number || config.phoneNumber;
+  if (def?.number) return def.number;
+  // Older/imported databases may have valid SignalWire numbers but no default flag.
+  const firstConfigured = db.prepare("SELECT number FROM phone_numbers WHERE provider = 'signalwire' AND number IS NOT NULL AND number != '' ORDER BY id LIMIT 1").get();
+  return firstConfigured?.number || config.phoneNumber;
 }
 
 function personalizeScript(scriptText, lead) {

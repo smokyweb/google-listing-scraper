@@ -20,7 +20,10 @@ function resolveFromNumber(phoneNumberId) {
     if (r) return r.number;
   }
   const def = db.prepare('SELECT number FROM phone_numbers WHERE is_default=1 LIMIT 1').get();
-  if (def) return def.number;
+  if (def?.number) return def.number;
+  // Fall back for databases where numbers exist but none is marked default.
+  const firstConfigured = db.prepare("SELECT number FROM phone_numbers WHERE provider = 'signalwire' AND number IS NOT NULL AND number != '' ORDER BY id LIMIT 1").get();
+  if (firstConfigured?.number) return firstConfigured.number;
   return getSignalWireConfig().phoneNumber;
 }
 function normalizePhone(raw) {
