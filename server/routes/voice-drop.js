@@ -144,7 +144,15 @@ async function placeCall(config, { from, to, twiml, statusCallback, statusCallba
   if (statusCallback) {
     body.append('StatusCallback', statusCallback);
     body.append('StatusCallbackMethod', 'POST');
-    if (statusCallbackEvent) body.append('StatusCallbackEvent', statusCallbackEvent);
+    if (statusCallbackEvent) {
+      // SignalWire expects one StatusCallbackEvent form field per event.
+      // Sending the space-delimited string as one field is rejected as a
+      // single, invalid event by some Compatibility API accounts.
+      const events = Array.isArray(statusCallbackEvent)
+        ? statusCallbackEvent
+        : String(statusCallbackEvent).trim().split(/\s+/).filter(Boolean);
+      for (const event of events) body.append('StatusCallbackEvent', event);
+    }
   }
   const resp = await fetch(
     `https://${config.spaceUrl}/api/laml/2010-04-01/Accounts/${config.projectId}/Calls.json`,

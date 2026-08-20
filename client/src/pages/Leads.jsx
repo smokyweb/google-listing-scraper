@@ -93,7 +93,7 @@ export default function Leads() {
   const [search,             setSearch]             = useState('');
   const [scrapes,            setScrapes]            = useState([]);
   const [salesUsers,         setSalesUsers]         = useState([]);
-  const [leadSourceFilter,   setLeadSourceFilter]   = useState(''); // '' | manual | scrape:<id>
+  const [leadSourceFilter,   setLeadSourceFilter]   = useState(''); // '' | scraped | manual | scrape:<id>
   const [salespersonFilter,  setSalespersonFilter]  = useState(''); // '' | 'unassigned' | '<id>'
   const [loading,            setLoading]            = useState(true);
   const [selectedIds,        setSelectedIds]        = useState(new Set());
@@ -153,6 +153,7 @@ export default function Leads() {
       const params = new URLSearchParams({ page, limit: 50 });
       if (search)            params.set('search',       search);
       if (leadSourceFilter === 'manual') params.set('source', 'manual');
+      if (leadSourceFilter === 'scraped') params.set('source', 'scraped');
       if (leadSourceFilter.startsWith('scrape:')) params.set('scrape_id', leadSourceFilter.slice(7));
       // Admin-only: pass salesperson filter to backend
       if (isAdmin && salespersonFilter !== '') {
@@ -314,6 +315,7 @@ export default function Leads() {
           className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 min-w-[200px]"
         >
           <option value="">All Leads</option>
+          <option value="scraped">All Scrapes</option>
           <option value="manual">Manually Added</option>
           {scrapes.map(s => (
             <option key={s.id} value={`scrape:${s.id}`}>

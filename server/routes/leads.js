@@ -21,6 +21,7 @@ router.get('/', authMiddleware, (req, res) => {
     params.push(Number(scrape_id));
   }
   if (source === 'manual') where.push("leads.source = 'manual'");
+  if (source === 'scraped') where.push("COALESCE(leads.source, 'scraped') = 'scraped'");
 
   // Salesperson: restrict to leads assigned to them OR from scrapes they created.
   if (isSalesperson && userId) {
