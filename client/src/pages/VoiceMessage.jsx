@@ -22,7 +22,7 @@ export default function VoiceMessage() {
   const [audioUrl, setAudioUrl] = useState(null);
   const textareaRef = useRef(null);
 
-  const load = () => apiFetch('/voice-scripts').then(setScripts).catch(() => {});
+  const load = () => apiFetch('/voice-scripts?mode=live').then(setScripts).catch(() => {});
   useEffect(() => { load(); }, []);
 
   const insertField = (field) => {
@@ -59,7 +59,7 @@ export default function VoiceMessage() {
         await apiFetch(`/voice-scripts/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ name, script }) });
         setMsg({ type: 'success', text: 'Script updated' });
       } else {
-        const created = await apiFetch('/voice-scripts', { method: 'POST', body: JSON.stringify({ name, script }) });
+        const created = await apiFetch('/voice-scripts', { method: 'POST', body: JSON.stringify({ name, script, mode: 'live' }) });
         setSelected(created);
         setMsg({ type: 'success', text: 'Script saved' });
       }

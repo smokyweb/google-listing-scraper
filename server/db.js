@@ -207,6 +207,17 @@ try { db.exec("ALTER TABLE leads ADD COLUMN unsubscribed INTEGER DEFAULT 0"); } 
 try { db.exec("ALTER TABLE email_templates ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
 try { db.exec("ALTER TABLE sms_templates ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
 try { db.exec("ALTER TABLE voice_scripts ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}
+try { db.exec("ALTER TABLE voice_scripts ADD COLUMN mode TEXT DEFAULT 'live'"); } catch(e) {}
+// Existing scripts were the shared outbound/live scripts. Keep them in the
+// Live Voice Message library and create a separate starter voicemail script.
+try {
+  db.exec("UPDATE voice_scripts SET mode = 'live' WHERE mode IS NULL OR mode = ''");
+  const voicemailScript = db.prepare("SELECT id FROM voice_scripts WHERE mode = 'voicemail' LIMIT 1").get();
+  if (!voicemailScript) {
+    db.prepare("INSERT INTO voice_scripts (name, script, mode, is_active) VALUES (?, ?, 'voicemail', 1)")
+      .run('[Voicemail] General Outreach', 'Hi, this is a message for {company_name} in {city}, {state}. I wanted to reach out about an opportunity for your business. Please call us back at your earliest convenience. Thank you.');
+  }
+} catch(e) { console.error('voice_scripts mode migration:', e.message); }
 try { db.exec("ALTER TABLE leads ADD COLUMN notes TEXT DEFAULT ''"); } catch(e) {}
 try { db.exec("ALTER TABLE scrapes ADD COLUMN next_page_token TEXT"); } catch(e) {}
 try { db.exec("ALTER TABLE scrapes ADD COLUMN created_by_user_id INTEGER"); } catch(e) {}

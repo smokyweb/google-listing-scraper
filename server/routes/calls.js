@@ -311,7 +311,7 @@ router.post('/trigger', authMiddleware, async (req, res) => {
   try {
     const { script, leadIds, phoneNumberId, callDelay = 0 } = req.body;
     const delayMs = Math.min(Math.max(parseInt(callDelay) || 0, 0), 120) * 1000; // cap at 2 min
-    const activeScript = db.prepare('SELECT * FROM voice_scripts WHERE is_active = 1 LIMIT 1').get();
+    const activeScript = db.prepare("SELECT * FROM voice_scripts WHERE mode = 'live' AND is_active = 1 LIMIT 1").get();
     const callScript = script || activeScript?.script || 'Hello {company_name}, this is a business outreach call.';
     const swConfig = getSignalWireConfig();
     const transferNumber = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';

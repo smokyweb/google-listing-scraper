@@ -69,7 +69,7 @@ export default function PhoneCalls() {
         setMyAssignedNumber(num);
       }
     }).catch(console.error);
-    apiFetch('/voice-scripts')
+    apiFetch(`/voice-scripts?mode=${mode === 'voicemail' ? 'voicemail' : 'live'}`)
       .then(data => {
         setVoiceScripts(data);
         const active = data.find(s => s.is_active);

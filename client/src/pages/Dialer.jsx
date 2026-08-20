@@ -104,7 +104,7 @@ export default function Dialer() {
       if (def) setFromNumberId(String(def.id));
     }).catch(() => {});
 
-    apiFetch('/voice-scripts').then(data => {
+    apiFetch('/voice-scripts?mode=live').then(data => {
       setVoiceScripts(data);
       const active = data.find(s => s.is_active);
       if (active) {

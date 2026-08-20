@@ -19,12 +19,7 @@ export default function VoicemailDrop() {
   const [audioUrl, setAudioUrl] = useState(null);
   const textareaRef = useRef(null);
 
-  const load = () => apiFetch('/voice-scripts').then(data => {
-    // Filter for voicemail scripts (we'll tag them by name prefix)
-    setScripts(data.filter(s => s.name.startsWith('[VM]') || s.voicemail_type));
-    // Actually show all and let admin label them
-    setScripts(data);
-  }).catch(() => {});
+  const load = () => apiFetch('/voice-scripts?mode=voicemail').then(setScripts).catch(() => {});
 
   useEffect(() => { load(); }, []);
 
@@ -48,7 +43,7 @@ export default function VoicemailDrop() {
         await apiFetch(`/voice-scripts/${selected.id}`, { method: 'PATCH', body: JSON.stringify({ name, script }) });
         setMsg({ type: 'success', text: 'Voicemail script updated' });
       } else {
-        const created = await apiFetch('/voice-scripts', { method: 'POST', body: JSON.stringify({ name, script }) });
+        const created = await apiFetch('/voice-scripts', { method: 'POST', body: JSON.stringify({ name, script, mode: 'voicemail' }) });
         setSelected(created);
         setMsg({ type: 'success', text: 'Voicemail script saved' });
       }
@@ -61,6 +56,13 @@ export default function VoicemailDrop() {
     if (!selected || !window.confirm('Delete this voicemail script?')) return;
     await apiFetch(`/voice-scripts/${selected.id}`, { method: 'DELETE' });
     setSelected(null); setName(''); setScript('');
+    load();
+  };
+
+  const handleActivate = async () => {
+    if (!selected) return;
+    await apiFetch(`/voice-scripts/${selected.id}/activate`, { method: 'POST' });
+    setMsg({ type: 'success', text: 'Voicemail script set as active' });
     load();
   };
 
@@ -154,6 +156,11 @@ export default function VoicemailDrop() {
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
               {ttsLoading ? 'Generating...' : '🔊 Preview Voice'}
             </button>
+            {selected && !selected.is_active && (
+              <button onClick={handleActivate} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition-colors">
+                Set as Active
+              </button>
+            )}
             {selected && (
               <button onClick={handleDelete} className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-lg text-sm transition-colors">Delete</button>
             )}

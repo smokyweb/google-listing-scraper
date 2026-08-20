@@ -127,7 +127,7 @@ export default function Leads() {
 
   // ── fetch voice scripts ────────────────────────────────────────────────────
   useEffect(() => {
-    apiFetch('/voice-scripts')
+    apiFetch(`/voice-scripts?mode=${voiceDropMode === 'voicemail' ? 'voicemail' : 'live'}`)
       .then(data => {
         setVoiceScripts(data);
         const active = data.find(s => s.is_active);

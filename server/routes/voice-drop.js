@@ -464,11 +464,13 @@ router.post('/start', authMiddleware, async (req, res) => {
     // ── Resolve script ───────────────────────────────────────────────────────
     let resolvedScript = scriptText || '';
     if (!resolvedScript && voiceScriptId) {
-      const vs = db.prepare('SELECT script FROM voice_scripts WHERE id = ?').get(voiceScriptId);
+      const scriptMode = mode === 'agent' ? 'live' : 'voicemail';
+      const vs = db.prepare('SELECT script FROM voice_scripts WHERE id = ? AND mode = ?').get(voiceScriptId, scriptMode);
       if (vs) resolvedScript = vs.script;
     }
     if (!resolvedScript) {
-      const active = db.prepare('SELECT script FROM voice_scripts WHERE is_active=1 LIMIT 1').get();
+      const scriptMode = mode === 'agent' ? 'live' : 'voicemail';
+      const active = db.prepare('SELECT script FROM voice_scripts WHERE mode = ? AND is_active=1 LIMIT 1').get(scriptMode);
       resolvedScript =
         active?.script ||
         'Hello, this is an important message for your business. Thank you for your time.';
