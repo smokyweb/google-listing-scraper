@@ -197,6 +197,21 @@ async function updateCall(config, callSid, { twiml, status }) {
   return data;
 }
 
+async function fetchCallStatus(config, callSid) {
+  if (!config.projectId || !config.token || !callSid) return null;
+  try {
+    const resp = await fetch(
+      `https://${config.spaceUrl}/api/laml/2010-04-01/Accounts/${config.projectId}/Calls/${callSid}.json`,
+      { headers: { Authorization: swAuthHeader(config) } }
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.status || null;
+  } catch {
+    return null;
+  }
+}
+
 // ── TwiML builders ──────────────────────────────────────────────────────────
 
 function xmlEscape(s) {
@@ -321,6 +336,27 @@ function resolveAdminFromNumber(config) {
   // Older/imported databases may have valid SignalWire numbers but no default flag.
   const firstConfigured = db.prepare("SELECT number FROM phone_numbers WHERE provider = 'signalwire' AND number IS NOT NULL AND number != '' ORDER BY id LIMIT 1").get();
   return firstConfigured?.number || config.phoneNumber;
+}
+
+/**
+ * Start the recipient leg for a live-voice session.  This is intentionally
+ * idempotent: recent SignalWire accounts do not consistently deliver the
+ * agent answered callback, so the recipient must not depend on that callback
+ * before entering the conference.
+ */
+async function startRecipientLeg(config, session, baseUrl) {
+  const current = getSession(session.id);
+  if (current?.recipient_call_sid) return current.recipient_call_sid;
+  const leadCall = await placeCall(config, {
+    from: session.from_number,
+    to: session.lead_phone,
+    twiml: leadConferenceTwiml(session.conference_name),
+    statusCallback: `${baseUrl}/api/voice-drop/webhook/call-status?sid=${session.id}&leg=lead`,
+    statusCallbackEvent: 'answered',
+  });
+  updateSession(session.id, { recipient_call_sid: leadCall.sid });
+  console.log(`[VoiceDrop][agent] Lead call to ${session.lead_phone} SID=${leadCall.sid}`);
+  return leadCall.sid;
 }
 
 function personalizeScript(scriptText, lead) {
@@ -557,6 +593,13 @@ router.post('/start', authMiddleware, async (req, res) => {
       `[VoiceDrop][agent] Session ${sessionId}: calling agent ${agentPhone} SID=${agentCall.sid}`
     );
 
+    // Do not wait for SignalWire's agent answered callback to create the lead
+    // leg.  Some Compatibility API accounts accept the call but omit that
+    // callback, leaving the session stuck at "initiated" and never bridging.
+    // Both legs can safely wait in the same conference until the other joins.
+    await startRecipientLeg(config, getSession(sessionId), baseUrl);
+    updateSession(sessionId, { state: 'agent_answered' });
+
     // Pre-generate audio in background
     generateElevenLabsAudio(resolvedScript, baseUrl)
       .then(url => { if (url) updateSession(sessionId, { audio_url: url }); })
@@ -576,10 +619,29 @@ router.post('/start', authMiddleware, async (req, res) => {
 
 // ── GET /session/:id — poll ──────────────────────────────────────────────────
 
-router.get('/session/:id', authMiddleware, (req, res) => {
+router.get('/session/:id', authMiddleware, async (req, res) => {
   const session = getSession(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
   if (!canAccessSession(session, req.user)) return res.status(403).json({ error: 'Forbidden' });
+
+  // Reconcile from SignalWire when a provider callback was dropped.  This is
+  // intentionally limited to the live-voice lead leg because the UI polls
+  // this endpoint while waiting for the salesperson's Drop buttons.
+  if (
+    session.mode === 'agent' &&
+    session.recipient_call_sid &&
+    ['agent_answered', 'initiated'].includes(session.state)
+  ) {
+    const leadStatus = await fetchCallStatus(getSignalWireConfig(), session.recipient_call_sid);
+    if (['answered', 'in-progress'].includes(leadStatus)) {
+      updateSession(session.id, { state: 'recipient_answered' });
+      session.state = 'recipient_answered';
+    } else if (['no-answer', 'busy', 'failed', 'canceled', 'completed'].includes(leadStatus)) {
+      updateSession(session.id, { state: 'failed', error_msg: `Lead call ${leadStatus}` });
+      session.state = 'failed';
+      session.error_msg = `Lead call ${leadStatus}`;
+    }
+  }
   res.json({
     id: session.id,
     mode: session.mode || 'voicemail',
@@ -803,19 +865,11 @@ router.post('/webhook/call-status', async (req, res) => {
     if (leg === 'agent') {
       if (callAnswered) {
         updateSession(sessionId, { state: 'agent_answered', agent_call_sid: CallSid });
-        // Now call the recipient
+        // Compatibility API accounts may send this callback late.  The lead
+        // leg is normally already started by /start; this remains a safe
+        // fallback for sessions created by an older revision.
         try {
-          const leadCall = await placeCall(config, {
-            from: session.from_number,
-            to: session.lead_phone,
-            twiml: leadConferenceTwiml(session.conference_name),
-            statusCallback: `${baseUrl}/api/voice-drop/webhook/call-status?sid=${sessionId}&leg=lead`,
-            statusCallbackEvent: 'answered',
-          });
-          updateSession(sessionId, { recipient_call_sid: leadCall.sid });
-          console.log(
-            `[VoiceDrop][agent] Lead call to ${session.lead_phone} SID=${leadCall.sid}`
-          );
+          await startRecipientLeg(config, getSession(sessionId), baseUrl);
         } catch (err) {
           console.error(`[VoiceDrop][agent] Failed to call lead:`, err.message);
           updateSession(sessionId, {
