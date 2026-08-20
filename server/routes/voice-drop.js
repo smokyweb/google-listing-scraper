@@ -471,7 +471,10 @@ router.post('/start', authMiddleware, async (req, res) => {
     }
     if (!resolvedScript) {
       const scriptMode = mode === 'agent' ? 'live' : 'voicemail';
-      const active = db.prepare('SELECT script FROM voice_scripts WHERE mode = ? AND is_active=1 LIMIT 1').get(scriptMode);
+      const ownActive = req.user?.role === 'salesperson'
+        ? db.prepare('SELECT script FROM voice_scripts WHERE mode = ? AND created_by_user_id = ? AND is_active = 1 LIMIT 1').get(scriptMode, req.user.userId)
+        : null;
+      const active = ownActive || db.prepare('SELECT script FROM voice_scripts WHERE mode = ? AND created_by_user_id IS NULL AND is_active = 1 LIMIT 1').get(scriptMode);
       resolvedScript =
         active?.script ||
         'Hello, this is an important message for your business. Thank you for your time.';

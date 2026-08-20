@@ -12,6 +12,9 @@ const FIELDS = [
 ];
 
 export default function VoiceMessage() {
+  const role = localStorage.getItem('gls_role') || 'admin';
+  const user = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
+  const isSalesperson = role === 'salesperson';
   const [scripts, setScripts] = useState([]);
   const [selected, setSelected] = useState(null);
   const [name, setName] = useState('');
@@ -21,11 +24,13 @@ export default function VoiceMessage() {
   const [ttsLoading, setTtsLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState(null);
   const textareaRef = useRef(null);
+  const canEdit = !selected || (!isSalesperson && selected.created_by_user_id == null) || (isSalesperson && selected.created_by_user_id === user?.id);
 
   const load = () => apiFetch('/voice-scripts?mode=live').then(setScripts).catch(() => {});
   useEffect(() => { load(); }, []);
 
   const insertField = (field) => {
+    if (!canEdit) return;
     const ta = textareaRef.current;
     if (!ta) { setScript(s => s + field); return; }
     const start = ta.selectionStart;
@@ -134,7 +139,7 @@ export default function VoiceMessage() {
         <div className="lg:col-span-2 bg-gray-900 border border-gray-800 rounded-xl p-6">
           <div className="mb-4">
             <label className="block text-xs text-gray-400 mb-1">Script Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Main Outreach Script"
+            <input value={name} onChange={e => setName(e.target.value)} disabled={!canEdit} placeholder="e.g. Main Outreach Script"
               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500" />
           </div>
 
@@ -142,7 +147,7 @@ export default function VoiceMessage() {
             <label className="block text-xs text-gray-400 mb-2">Insert Data Fields</label>
             <div className="flex flex-wrap gap-2">
               {FIELDS.map(f => (
-                <button key={f.value} onClick={() => insertField(f.value)}
+                <button key={f.value} onClick={() => insertField(f.value)} disabled={!canEdit}
                   className="px-2 py-1 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs transition-colors font-mono">
                   {f.value}
                 </button>
@@ -152,17 +157,23 @@ export default function VoiceMessage() {
 
           <div className="mb-4">
             <label className="block text-xs text-gray-400 mb-1">Script Text</label>
-            <textarea ref={textareaRef} value={script} onChange={e => setScript(e.target.value)} rows={8}
+            <textarea ref={textareaRef} value={script} onChange={e => setScript(e.target.value)} disabled={!canEdit} rows={8}
               className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none" />
             <p className="text-xs text-gray-600 mt-1">After the script plays, callers hear: "Press 1 to speak to staff · Press 2 for callback · Press 3 to schedule meeting · Press 4 to unsubscribe"</p>
           </div>
 
           {/* AI Script Generator */}
-          <AIScriptBox type="voice" onGenerated={s => { setScript(s); setSelected(null); }} placeholder='e.g. "Warm intro for HVAC companies in the South, mention summer deals"' />
+          <AIScriptBox type="voice" onGenerated={s => { if (canEdit) { setScript(s); setSelected(null); } }} placeholder='e.g. "Warm intro for HVAC companies in the South, mention summer deals"' />
 
           {msg && (
             <div className={`mb-4 px-4 py-3 rounded-lg text-sm ${msg.type === 'error' ? 'bg-red-900/50 text-red-300' : 'bg-green-900/50 text-green-300'}`}>
               {msg.text}
+            </div>
+          )}
+
+          {selected && !canEdit && (
+            <div className="mb-4 rounded-lg border border-gray-700 bg-gray-800/60 px-4 py-3 text-sm text-gray-300">
+              Admin script — read-only. Create a new script to customize your Live Voice Message.
             </div>
           )}
 
@@ -174,11 +185,11 @@ export default function VoiceMessage() {
           )}
 
           <div className="flex flex-wrap gap-2">
-            <button onClick={handleSave} disabled={saving || !name || !script}
+            <button onClick={handleSave} disabled={!canEdit || saving || !name || !script}
               className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
               {saving ? 'Saving...' : selected ? 'Update Script' : 'Save Script'}
             </button>
-            {selected && !selected.is_active && (
+            {selected && canEdit && !selected.is_active && (
               <button onClick={handleActivate} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm transition-colors">
                 ✓ Set as Active
               </button>
@@ -187,7 +198,7 @@ export default function VoiceMessage() {
               className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm transition-colors disabled:opacity-50">
               {ttsLoading ? 'Generating...' : '🔊 Preview TTS'}
             </button>
-            {selected && (
+            {selected && canEdit && (
               <button onClick={handleDelete} className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-lg text-sm transition-colors">
                 Delete
               </button>

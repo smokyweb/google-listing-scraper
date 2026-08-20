@@ -26,6 +26,7 @@ export default function PhoneCalls() {
   const [myAssignedNumber, setMyAssignedNumber] = useState(null);
   const userRole = localStorage.getItem('gls_role') || 'admin';
   const isSalesperson = userRole === 'salesperson';
+  const currentUser = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
   const [selectedIds, setSelectedIds] = useState(new Set());
 
   // Voice Drop modal state
@@ -72,7 +73,8 @@ export default function PhoneCalls() {
     apiFetch(`/voice-scripts?mode=${mode === 'voicemail' ? 'voicemail' : 'live'}`)
       .then(data => {
         setVoiceScripts(data);
-        const active = data.find(s => s.is_active);
+        const active = data.find(s => s.is_active && isSalesperson && s.created_by_user_id === currentUser?.id)
+          || data.find(s => s.is_active && s.created_by_user_id == null);
         if (active) { setSelectedScriptId(String(active.id)); setScript(active.script); }
       })
       .catch(console.error);

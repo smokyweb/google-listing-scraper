@@ -67,6 +67,9 @@ function isValidPhone(raw) {
 // ── Component ───────────────────────────────────────────────────────────────
 
 export default function Dialer() {
+  const userRole = localStorage.getItem('gls_role') || 'admin';
+  const currentUser = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
+  const isSalesperson = userRole === 'salesperson';
   const [toNumber, setToNumber] = useState('');
   const [agentNumber, setAgentNumber] = useState('');
   const [fromNumberId, setFromNumberId] = useState('');
@@ -106,7 +109,8 @@ export default function Dialer() {
 
     apiFetch('/voice-scripts?mode=live').then(data => {
       setVoiceScripts(data);
-      const active = data.find(s => s.is_active);
+      const active = data.find(s => s.is_active && isSalesperson && s.created_by_user_id === currentUser?.id)
+        || data.find(s => s.is_active && s.created_by_user_id == null);
       if (active) {
         setVdScriptId(String(active.id));
         setVdScriptText(active.script);

@@ -85,6 +85,7 @@ export default function Leads() {
   // Role — read from localStorage (set at login, same approach as App.jsx).
   const role    = localStorage.getItem('gls_role') || 'admin';
   const isAdmin = role === 'admin';
+  const currentUser = (() => { try { return JSON.parse(localStorage.getItem('gls_user') || 'null'); } catch { return null; } })();
 
   const [leads,              setLeads]              = useState([]);
   const [total,              setTotal]              = useState(0);
@@ -134,7 +135,9 @@ export default function Leads() {
     ]).then(([live, voicemail]) => {
       setLiveVoiceScripts(live);
       setVoicemailScripts(voicemail);
-      const active = (voiceDropMode === 'voicemail' ? voicemail : live).find(s => s.is_active);
+      const available = voiceDropMode === 'voicemail' ? voicemail : live;
+      const active = available.find(s => s.is_active && (!isAdmin && s.created_by_user_id === currentUser?.id))
+        || available.find(s => s.is_active && s.created_by_user_id == null);
       if (active) {
         setSelectedScriptId(String(active.id));
         setVoiceScript(active.script);
