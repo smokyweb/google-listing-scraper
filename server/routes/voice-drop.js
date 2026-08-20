@@ -43,6 +43,10 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
 
+// Public host used by SignalWire callbacks and generated audio URLs.
+// Keep calls functional when BASE_URL is omitted from Coolify environment.
+const PUBLIC_BASE_URL = process.env.BASE_URL || 'https://listing-scraper.bluesapps.com';
+
 const AUDIO_DIR = path.join(__dirname, '..', '..', 'data', 'audio');
 fs.mkdirSync(AUDIO_DIR, { recursive: true });
 
@@ -353,7 +357,7 @@ router.post('/start', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'mode must be "voicemail" or "agent"' });
     }
 
-    const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+    const baseUrl = PUBLIC_BASE_URL;
     const config = getSignalWireConfig();
     const isMock = !config.projectId || !config.token;
 
@@ -619,7 +623,7 @@ router.post('/drop-message', authMiddleware, async (req, res) => {
       return res.status(409).json({ error: 'Recipient call SID missing.' });
     }
 
-    const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+    const baseUrl = PUBLIC_BASE_URL;
     const config = getSignalWireConfig();
 
     // Use pre-generated audio or generate now
@@ -733,7 +737,7 @@ router.post('/webhook/call-status', async (req, res) => {
     `[VoiceDrop webhook] sid=${sessionId} mode=${session.mode} leg=${leg} status=${CallStatus}`
   );
 
-  const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+  const baseUrl = PUBLIC_BASE_URL;
   const config = getSignalWireConfig();
 
   try {
