@@ -642,11 +642,15 @@ router.post('/drop-message', authMiddleware, async (req, res) => {
     // answers: live-person message or voicemail message. Resolve the choice
     // here so the Leads page cannot accidentally play its initial script.
     let selectedDropScript = scriptText || session.script_text;
+    let selectedScriptMode = null;
     if (voiceScriptId) {
       const selected = db.prepare(
-        "SELECT script FROM voice_scripts WHERE id = ? AND mode IN ('live', 'voicemail')"
+        "SELECT script, mode FROM voice_scripts WHERE id = ? AND mode IN ('live', 'voicemail')"
       ).get(voiceScriptId);
-      if (selected) selectedDropScript = selected.script;
+      if (selected) {
+        selectedDropScript = selected.script;
+        selectedScriptMode = selected.mode;
+      }
     }
     if (session.lead_id && selectedDropScript) {
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(session.lead_id);
@@ -671,7 +675,7 @@ router.post('/drop-message', authMiddleware, async (req, res) => {
       audioUrl,
       selectedDropScript,
       baseUrl,
-      dropMode !== 'voicemail'
+      dropMode !== 'voicemail' && selectedScriptMode !== 'voicemail'
     );
 
     // Redirect recipient call (kicks them out of conference to play message)
