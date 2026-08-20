@@ -145,13 +145,15 @@ async function placeCall(config, { from, to, twiml, statusCallback, statusCallba
     body.append('StatusCallback', statusCallback);
     body.append('StatusCallbackMethod', 'POST');
     if (statusCallbackEvent) {
-      // SignalWire expects one StatusCallbackEvent form field per event.
-      // Sending the space-delimited string as one field is rejected as a
-      // single, invalid event by some Compatibility API accounts.
-      const events = Array.isArray(statusCallbackEvent)
-        ? statusCallbackEvent
-        : String(statusCallbackEvent).trim().split(/\s+/).filter(Boolean);
-      for (const event of events) body.append('StatusCallbackEvent', event);
+      // SignalWire's Compatibility API expects callback events as one
+      // space-delimited value. Live Voice only passes `answered`; completed
+      // and failed are delivered by the provider defaults.
+      body.append(
+        'StatusCallbackEvent',
+        Array.isArray(statusCallbackEvent)
+          ? statusCallbackEvent.join(' ')
+          : String(statusCallbackEvent).trim()
+      );
     }
   }
   const resp = await fetch(
@@ -511,7 +513,7 @@ router.post('/start', authMiddleware, async (req, res) => {
         to: leadPhone,
         twiml: callTwiml,
         statusCallback: `${baseUrl}/api/voice-drop/webhook/call-status?sid=${sessionId}&leg=lead`,
-        statusCallbackEvent: 'initiated ringing answered completed',
+        statusCallbackEvent: 'answered',
       });
       updateSession(sessionId, { recipient_call_sid: leadCall.sid });
       console.log(
@@ -529,7 +531,7 @@ router.post('/start', authMiddleware, async (req, res) => {
       to: agentPhone,
       twiml: agentConferenceTwiml(confName),
       statusCallback: `${baseUrl}/api/voice-drop/webhook/call-status?sid=${sessionId}&leg=agent`,
-      statusCallbackEvent: 'initiated ringing answered completed',
+      statusCallbackEvent: 'answered',
     });
     updateSession(sessionId, { agent_call_sid: agentCall.sid });
     console.log(
@@ -759,7 +761,7 @@ router.post('/webhook/call-status', async (req, res) => {
             to: session.lead_phone,
             twiml: leadConferenceTwiml(session.conference_name),
             statusCallback: `${baseUrl}/api/voice-drop/webhook/call-status?sid=${sessionId}&leg=lead`,
-            statusCallbackEvent: 'initiated ringing answered completed',
+            statusCallbackEvent: 'answered',
           });
           updateSession(sessionId, { recipient_call_sid: leadCall.sid });
           console.log(
