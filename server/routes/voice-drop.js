@@ -710,6 +710,9 @@ router.post('/webhook/call-status', async (req, res) => {
 
   const { sid: sessionId, leg } = req.query;
   const { CallStatus, CallSid } = req.body;
+  // SignalWire may report the answered callback as either `answered` or
+  // `in-progress` depending on the Compatibility API account/version.
+  const callAnswered = ['answered', 'in-progress'].includes(CallStatus);
 
   if (!sessionId || !leg) {
     console.warn('[VoiceDrop webhook] Missing sid or leg');
@@ -737,7 +740,7 @@ router.post('/webhook/call-status', async (req, res) => {
     // ── Voicemail mode: only 'lead' leg ──────────────────────────────────────
     if (session.mode === 'voicemail') {
       if (leg !== 'lead') return;
-      if (CallStatus === 'in-progress') {
+      if (callAnswered) {
         updateSession(sessionId, { state: 'active', recipient_call_sid: CallSid });
       } else if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus)) {
         updateSession(sessionId, { state: 'failed', error_msg: `Call ${CallStatus}` });
@@ -752,7 +755,7 @@ router.post('/webhook/call-status', async (req, res) => {
 
     // ── Agent mode: two legs ──────────────────────────────────────────────────
     if (leg === 'agent') {
-      if (CallStatus === 'in-progress') {
+      if (callAnswered) {
         updateSession(sessionId, { state: 'agent_answered', agent_call_sid: CallSid });
         // Now call the recipient
         try {
@@ -793,7 +796,7 @@ router.post('/webhook/call-status', async (req, res) => {
         }
       }
     } else if (leg === 'lead') {
-      if (CallStatus === 'in-progress') {
+      if (callAnswered) {
         updateSession(sessionId, { state: 'recipient_answered', recipient_call_sid: CallSid });
         console.log(`[VoiceDrop][agent] Lead answered — ready to drop`);
       } else if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus)) {
