@@ -198,7 +198,7 @@ export default function VoiceDropModal({
           </div>
           <button
             onClick={onClose}
-            disabled={isActive && !isFailed}
+            disabled={isActive && !isFailed && !isDropping}
             className="ml-4 text-2xl leading-none text-gray-500 hover:text-white disabled:opacity-30"
             aria-label="Close"
           >
@@ -339,6 +339,19 @@ export default function VoiceDropModal({
                 </button>
               )}
             </>
+          )}
+
+          {/* The recipient may remain on the IVR/transfer call after the
+              message is dropped. Let the salesperson close the screen
+              without cancelling that live call. */}
+          {sessionId && isDropping && (
+            <button
+              onClick={onClose}
+              disabled={busy}
+              className="rounded-lg bg-gray-700 px-5 py-2 text-sm text-white hover:bg-gray-600 disabled:opacity-40"
+            >
+              Close
+            </button>
           )}
 
           {/* Terminal state */}

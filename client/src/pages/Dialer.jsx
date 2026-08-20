@@ -564,13 +564,23 @@ export default function Dialer() {
                 {/* Session controls */}
                 {vdSession && vdActive && (
                   <div className="flex gap-2">
+                    {vdIsDropping ? (
+                      <button
+                        onClick={resetVdSession}
+                        disabled={vdBusy}
+                        className="flex-1 py-2 bg-gray-700 text-white rounded-lg text-sm hover:bg-gray-600 disabled:opacity-40"
+                      >
+                        Close
+                      </button>
+                    ) : (
                     <button
                       onClick={cancelVoiceDrop}
-                      disabled={vdBusy || vdIsDropping}
+                      disabled={vdBusy}
                       className="flex-1 py-2 border border-gray-600 text-gray-300 rounded-lg text-sm hover:bg-gray-800 disabled:opacity-40"
                     >
                       Cancel
                     </button>
+                    )}
                     {vdSession.mode === 'agent' && (
                       <button
                         onClick={dropVoiceMessage}

@@ -224,6 +224,15 @@ function ivrMenuTwiml(baseUrl) {
   );
 }
 
+// Empty conference wait music can fall back to provider ringback on some
+// Compatibility API accounts. Return explicit silence while the lead leg is
+// being connected so the salesperson hears only the live conference audio.
+router.all('/silence', (req, res) => {
+  res.type('text/xml').send(
+    '<?xml version="1.0" encoding="UTF-8"?><Response><Pause length="60"/></Response>'
+  );
+});
+
 /**
  * Build the complete playback TwiML:
  *   <Play> or <Say> the message, then drop into the IVR menu.
@@ -244,7 +253,7 @@ function agentConferenceTwiml(confName) {
   return (
     `<?xml version="1.0" encoding="UTF-8"?><Response>` +
     `<Say voice="alice">Lead is connecting. You are in listen-only mode — your microphone is muted. Click Drop Voice Message in the app when you are ready.</Say>` +
-    `<Dial><Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false" waitUrl="" muted="true">${xmlEscape(confName)}</Conference></Dial>` +
+    `<Dial><Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false" waitUrl="${PUBLIC_BASE_URL}/api/voice-drop/silence" muted="true">${xmlEscape(confName)}</Conference></Dial>` +
     `</Response>`
   );
 }
@@ -257,7 +266,7 @@ function agentConferenceTwiml(confName) {
 function leadConferenceTwiml(confName) {
   return (
     `<?xml version="1.0" encoding="UTF-8"?><Response>` +
-    `<Dial><Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false">${xmlEscape(confName)}</Conference></Dial>` +
+    `<Dial><Conference beep="false" startConferenceOnEnter="true" endConferenceOnExit="false" waitUrl="${PUBLIC_BASE_URL}/api/voice-drop/silence">${xmlEscape(confName)}</Conference></Dial>` +
     `</Response>`
   );
 }
