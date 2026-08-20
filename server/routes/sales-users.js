@@ -15,14 +15,22 @@ function adminOnly(req, res, next) {
   next();
 }
 
-router.get('/', authMiddleware, adminOnly, (req, res) => {
-  const users = db.prepare(`
-    SELECT u.*, pn.number as phone_number_label
-    FROM sales_users u
-    LEFT JOIN phone_numbers pn ON pn.id = u.phone_number_id
-    ORDER BY u.id ASC
-  `).all().map(u => ({ ...u, password_hash: undefined }));
-  res.json(users);
+router.get('/', authMiddleware, (req, res) => {
+  const users = req.user.role === 'admin'
+    ? db.prepare(`
+        SELECT u.*, pn.number as phone_number_label
+        FROM sales_users u
+        LEFT JOIN phone_numbers pn ON pn.id = u.phone_number_id
+        ORDER BY u.id ASC
+      `).all()
+    : db.prepare(`
+        SELECT u.*, pn.number as phone_number_label
+        FROM sales_users u
+        LEFT JOIN phone_numbers pn ON pn.id = u.phone_number_id
+        WHERE u.id = ?
+      `).all(req.user.userId);
+  const safeUsers = users.map(u => ({ ...u, password_hash: undefined }));
+  res.json(safeUsers);
 });
 
 router.post('/', authMiddleware, adminOnly, (req, res) => {
@@ -51,9 +59,17 @@ router.post('/', authMiddleware, adminOnly, (req, res) => {
   }
 });
 
-router.patch('/:id', authMiddleware, adminOnly, (req, res) => {
+router.patch('/:id', authMiddleware, (req, res) => {
   const { name, email, password, states, cities, phone_number_id, is_active, forward_number } = req.body;
   const userId = parseInt(req.params.id, 10);
+  if (req.user.role === 'salesperson') {
+    if (userId !== req.user.userId) return res.status(403).json({ error: 'You may only update your own profile.' });
+    const allowed = ['forward_number'];
+    const unexpected = Object.keys(req.body).some(key => !allowed.includes(key));
+    if (unexpected) return res.status(403).json({ error: 'Salespersons may only update their forwarded number.' });
+  } else if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   const existing = db.prepare('SELECT * FROM sales_users WHERE id=?').get(userId);
   if (!existing) return res.status(404).json({ error: 'Not found' });
   const pwHash = password ? hashPassword(password) : existing.password_hash;
