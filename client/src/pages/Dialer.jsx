@@ -104,11 +104,6 @@ export default function Dialer() {
       if (def) setFromNumberId(String(def.id));
     }).catch(() => {});
 
-    apiFetch('/settings').then(s => {
-      if (s.transfer_phone_number)
-        setAgentNumber(s.transfer_phone_number.replace(/\D/g, '').replace(/^1/, ''));
-    }).catch(() => {});
-
     apiFetch('/voice-scripts').then(data => {
       setVoiceScripts(data);
       const active = data.find(s => s.is_active);
@@ -373,7 +368,7 @@ export default function Dialer() {
                     className={inp}
                   />
                   <p className="text-xs text-gray-600 mt-1">
-                    If set: your phone rings → you answer → auto-connects to lead. Leave blank for direct call.
+                    If set: your phone rings → you answer → auto-connects to lead. For salespeople, leaving this blank uses your configured forward number. Leave blank for a direct call when no forward number is configured.
                   </p>
                 </div>
                 <button

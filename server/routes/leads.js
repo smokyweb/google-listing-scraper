@@ -7,7 +7,7 @@ const { authMiddleware } = require('../middleware/auth');
 // • Admin:       sees all leads; may additionally filter by salesperson_id query param.
 // Both roles receive an `assigned_user_name` field for each lead (null if unassigned).
 router.get('/', authMiddleware, (req, res) => {
-  const { page = 1, limit = 50, keyword, city, state, search, scrape_id, salesperson_id } = req.query;
+  const { page = 1, limit = 50, keyword, city, state, search, scrape_id, salesperson_id, source } = req.query;
   const isSalesperson = req.user?.role === 'salesperson';
   const isAdmin       = req.user?.role === 'admin';
   const userId        = req.user?.userId;
@@ -20,6 +20,7 @@ router.get('/', authMiddleware, (req, res) => {
     where.push('leads.scrape_id = ?');
     params.push(Number(scrape_id));
   }
+  if (source === 'manual') where.push("leads.source = 'manual'");
 
   // Salesperson: restrict to leads assigned to them OR from scrapes they created.
   if (isSalesperson && userId) {
@@ -120,7 +121,7 @@ router.post('/', authMiddleware, (req, res) => {
   const fullName     = name || `${first_name || ''} ${last_name || ''}`.trim();
   const assignedUserId = assigned_user_id
     ? (parseInt(assigned_user_id, 10) || null)
-    : null;
+    : (req.user?.role === 'salesperson' ? req.user.userId : null);
 
   const result = db.prepare(`
     INSERT INTO leads (name, first_name, last_name, company, phone, email, website, address, city, state, keyword, scrape_id, source, assigned_user_id)

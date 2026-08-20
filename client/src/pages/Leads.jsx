@@ -93,7 +93,7 @@ export default function Leads() {
   const [search,             setSearch]             = useState('');
   const [scrapes,            setScrapes]            = useState([]);
   const [salesUsers,         setSalesUsers]         = useState([]);
-  const [selectedScrapeId,   setSelectedScrapeId]   = useState('');
+  const [leadSourceFilter,   setLeadSourceFilter]   = useState(''); // '' | manual | scrape:<id>
   const [salespersonFilter,  setSalespersonFilter]  = useState(''); // '' | 'unassigned' | '<id>'
   const [loading,            setLoading]            = useState(true);
   const [selectedIds,        setSelectedIds]        = useState(new Set());
@@ -152,7 +152,8 @@ export default function Leads() {
     try {
       const params = new URLSearchParams({ page, limit: 50 });
       if (search)            params.set('search',       search);
-      if (selectedScrapeId)  params.set('scrape_id',    selectedScrapeId);
+      if (leadSourceFilter === 'manual') params.set('source', 'manual');
+      if (leadSourceFilter.startsWith('scrape:')) params.set('scrape_id', leadSourceFilter.slice(7));
       // Admin-only: pass salesperson filter to backend
       if (isAdmin && salespersonFilter !== '') {
         params.set('salesperson_id', salespersonFilter);
@@ -168,7 +169,7 @@ export default function Leads() {
     }
   };
 
-  useEffect(() => { fetchLeads(); }, [page, search, selectedScrapeId, salespersonFilter]);
+  useEffect(() => { fetchLeads(); }, [page, search, leadSourceFilter, salespersonFilter]);
 
   // ── status / notes helpers ─────────────────────────────────────────────────
   const updateStatus = async (id, status) => {
@@ -215,6 +216,7 @@ export default function Leads() {
 
   // ── export ─────────────────────────────────────────────────────────────────
   const handleExport = async () => {
+    const selectedScrapeId = leadSourceFilter.startsWith('scrape:') ? leadSourceFilter.slice(7) : '';
     if (selectedScrapeId) {
       window.open(`/api/scrapes/${selectedScrapeId}/export`, '_blank');
       return;
@@ -248,6 +250,7 @@ export default function Leads() {
     }
   };
 
+  const selectedScrapeId = leadSourceFilter.startsWith('scrape:') ? leadSourceFilter.slice(7) : '';
   const selectedScrape = scrapes.find(s => String(s.id) === String(selectedScrapeId));
 
   // ── render ─────────────────────────────────────────────────────────────────
@@ -306,13 +309,14 @@ export default function Leads() {
 
         {/* Scrape filter */}
         <select
-          value={selectedScrapeId}
-          onChange={(e) => { setSelectedScrapeId(e.target.value); setPage(1); }}
+          value={leadSourceFilter}
+          onChange={(e) => { setLeadSourceFilter(e.target.value); setPage(1); }}
           className="px-3 py-2 bg-gray-900 border border-gray-800 rounded-lg text-white focus:outline-none focus:border-blue-500 min-w-[200px]"
         >
-          <option value="">All Scrapes</option>
+          <option value="">All Leads</option>
+          <option value="manual">Manually Added</option>
           {scrapes.map(s => (
-            <option key={s.id} value={String(s.id)}>
+            <option key={s.id} value={`scrape:${s.id}`}>
               {s.name} ({s.lead_count} leads)
             </option>
           ))}
@@ -336,9 +340,9 @@ export default function Leads() {
         )}
 
         {/* Clear scrape filter */}
-        {selectedScrapeId && (
+        {leadSourceFilter && (
           <button
-            onClick={() => { setSelectedScrapeId(''); setPage(1); }}
+            onClick={() => { setLeadSourceFilter(''); setPage(1); }}
             className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-sm transition-colors"
           >
             ✕ Clear filter

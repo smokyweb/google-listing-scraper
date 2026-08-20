@@ -41,6 +41,15 @@ function authHeader(config) {
   return 'Basic ' + Buffer.from(`${config.projectId}:${config.token}`).toString('base64');
 }
 
+function xmlEscape(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 // POST /api/dialer/call
 // Agent-first flow: calls the agent's number first, when they pick up it bridges to the lead
 // body: { toNumber, fromNumberId?, agentNumber?, leadId? }
@@ -54,8 +63,9 @@ router.post('/call', authMiddleware, async (req, res) => {
 
     // Salesperson: derive from number strictly from their assigned phone — ignore client-supplied fromNumberId
     let fromNumber;
+    let resolvedAgentNumber = agentNumber;
     if (req.user?.role === 'salesperson' && req.user?.userId) {
-      const sp = db.prepare('SELECT phone_number_id FROM sales_users WHERE id = ?').get(req.user.userId);
+      const sp = db.prepare('SELECT phone_number_id, forward_number FROM sales_users WHERE id = ?').get(req.user.userId);
       if (!sp || !sp.phone_number_id) {
         return res.status(400).json({ error: 'You do not have an assigned SignalWire phone number. Please contact your administrator.' });
       }
@@ -64,8 +74,10 @@ router.post('/call', authMiddleware, async (req, res) => {
         return res.status(400).json({ error: 'Your assigned phone number could not be found. Please contact your administrator.' });
       }
       fromNumber = assignedNum.number;
+      resolvedAgentNumber = resolvedAgentNumber || sp.forward_number || getSetting('transfer_phone_number');
     } else {
       fromNumber = resolveFromNumber(fromNumberId);
+      resolvedAgentNumber = resolvedAgentNumber || getSetting('transfer_phone_number');
     }
     fromNumber = normalizePhone(fromNumber);
     const toNormalized = normalizePhone(toNumber);
@@ -91,14 +103,14 @@ router.post('/call', authMiddleware, async (req, res) => {
     // Agent-first: if agentNumber provided, call agent first then bridge to lead
     // Otherwise: direct call to toNumber with IVR
     let twiml;
-    if (agentNumber) {
-      const agentNorm = normalizePhone(agentNumber);
+    if (resolvedAgentNumber) {
+      const agentNorm = normalizePhone(resolvedAgentNumber);
       if (!isValidE164(agentNorm)) {
         return res.status(400).json({ error: `Invalid agent number: "${agentNorm}". Must be E.164.` });
       }
       // Agent-first: once the salesperson answers, immediately Dial the recipient.
       // No keypress required — the old Gather/DTMF gate caused disconnects.
-      const leadLabel = lead ? lead.name || 'your lead' : toNormalized;
+      const leadLabel = xmlEscape(lead ? lead.name || 'your lead' : toNormalized);
       twiml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Say voice="alice">Connecting you to ${leadLabel}. Stand by.</Say>
