@@ -600,7 +600,7 @@ router.get('/session/:id', authMiddleware, (req, res) => {
  */
 router.post('/drop-message', authMiddleware, async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    const { sessionId, scriptText, voiceScriptId } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
 
     const session = getSession(sessionId);
@@ -637,18 +637,36 @@ router.post('/drop-message', authMiddleware, async (req, res) => {
     const baseUrl = PUBLIC_BASE_URL;
     const config = getSignalWireConfig();
 
+    // A Live Voice session can use either script library after the recipient
+    // answers: live-person message or voicemail message. Resolve the choice
+    // here so the Leads page cannot accidentally play its initial script.
+    let selectedDropScript = scriptText || session.script_text;
+    if (voiceScriptId) {
+      const selected = db.prepare(
+        "SELECT script FROM voice_scripts WHERE id = ? AND mode IN ('live', 'voicemail')"
+      ).get(voiceScriptId);
+      if (selected) selectedDropScript = selected.script;
+    }
+    if (session.lead_id && selectedDropScript) {
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(session.lead_id);
+      selectedDropScript = personalizeScript(selectedDropScript, lead);
+    }
+
     // Use pre-generated audio or generate now
-    let audioUrl = session.audio_url;
-    if (!audioUrl && session.script_text) {
+    // The pre-generated audio belongs to the initial Live Voice script. If
+    // the salesperson selected a different (for example voicemail) script,
+    // force fresh audio for that selection.
+    let audioUrl = selectedDropScript === session.script_text ? session.audio_url : null;
+    if (!audioUrl && selectedDropScript) {
       console.log('[VoiceDrop] Generating audio on-demand for agent drop...');
-      audioUrl = await generateElevenLabsAudio(session.script_text, baseUrl);
+      audioUrl = await generateElevenLabsAudio(selectedDropScript, baseUrl);
       if (audioUrl) updateSession(sessionId, { audio_url: audioUrl });
     }
 
     updateSession(sessionId, { state: 'dropping' });
 
     // Play message to recipient then IVR menu — agent is NOT in this TwiML
-    const playTwiml = buildPlaybackTwiml(audioUrl, session.script_text, baseUrl);
+    const playTwiml = buildPlaybackTwiml(audioUrl, selectedDropScript, baseUrl);
 
     // Redirect recipient call (kicks them out of conference to play message)
     await updateCall(config, session.recipient_call_sid, { twiml: playTwiml });

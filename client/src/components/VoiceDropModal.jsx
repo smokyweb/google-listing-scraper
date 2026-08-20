@@ -54,6 +54,8 @@ export default function VoiceDropModal({
   lead,          // { id, name, phone } — pass when dropping to a lead row
   targetPhone,   // string — pass when dropping to an arbitrary number (Dialer)
   voiceScripts,
+  liveVoiceScripts,
+  voicemailScripts,
   selectedScriptId,
   scriptText,
   mode = 'voicemail',
@@ -64,6 +66,14 @@ export default function VoiceDropModal({
   const [sessionError, setSessionError] = useState('');
   const [selectedId, setSelectedId] = useState(selectedScriptId || '');
   const [text, setText] = useState(scriptText || '');
+  const liveScripts = liveVoiceScripts || (mode === 'agent' ? voiceScripts : []);
+  const vmScripts = voicemailScripts || (mode === 'voicemail' ? voiceScripts : []);
+  const activeLive = liveScripts.find(s => s.is_active) || liveScripts[0];
+  const activeVm = vmScripts.find(s => s.is_active) || vmScripts[0];
+  const [liveScriptId, setLiveScriptId] = useState(activeLive ? String(activeLive.id) : '');
+  const [liveText, setLiveText] = useState(activeLive?.script || '');
+  const [vmScriptId, setVmScriptId] = useState(activeVm ? String(activeVm.id) : '');
+  const [vmText, setVmText] = useState(activeVm?.script || '');
   const [busy, setBusy] = useState(false);
   const [uiError, setUiError] = useState('');
   const timer = useRef(null);
@@ -132,14 +142,18 @@ export default function VoiceDropModal({
     }
   };
 
-  const drop = async () => {
+  const drop = async (dropText = text, dropScriptId = selectedId) => {
     if (!sessionId) return;
     setBusy(true);
     setUiError('');
     try {
       await apiFetch('/voice-drop/drop-message', {
         method: 'POST',
-        body: JSON.stringify({ sessionId }),
+        body: JSON.stringify({
+          sessionId,
+          scriptText: dropText,
+          voiceScriptId: dropScriptId ? Number(dropScriptId) : undefined,
+        }),
       });
       // State will update via next poll
     } catch (err) {
@@ -271,11 +285,33 @@ export default function VoiceDropModal({
               <p className="mt-1 text-sm text-red-300">{sessionError}</p>
             )}
             {canDrop && (
+              <>
+              <div className="mb-3 grid gap-2 sm:grid-cols-2 text-xs">
+                <label className="text-yellow-100">Live Voice script
+                  <select value={liveScriptId} onChange={e => {
+                    setLiveScriptId(e.target.value);
+                    const found = liveScripts.find(s => String(s.id) === e.target.value);
+                    if (found) setLiveText(found.script);
+                  }} className="mt-1 w-full rounded border border-yellow-700 bg-gray-800 px-2 py-1.5 text-white">
+                    {liveScripts.map(s => <option key={s.id} value={String(s.id)}>{s.name}{s.is_active ? ' âœ“' : ''}</option>)}
+                  </select>
+                </label>
+                <label className="text-blue-200">Voicemail script
+                  <select value={vmScriptId} onChange={e => {
+                    setVmScriptId(e.target.value);
+                    const found = vmScripts.find(s => String(s.id) === e.target.value);
+                    if (found) setVmText(found.script);
+                  }} className="mt-1 w-full rounded border border-blue-700 bg-gray-800 px-2 py-1.5 text-white">
+                    {vmScripts.map(s => <option key={s.id} value={String(s.id)}>{s.name}{s.is_active ? ' âœ“' : ''}</option>)}
+                  </select>
+                </label>
+              </div>
               <p className="mt-2 text-xs text-yellow-200">
                 You are in listen-only mode — the recipient cannot hear you. Click "Drop Voice
                 Message" when ready. The pre-recorded script plays to the recipient; your line
                 disconnects immediately after. Recipient then hears the Press 1/2/3/4 menu.
               </p>
+              </>
             )}
             {isSuccess && isVoicemail && (
               <p className="mt-2 text-xs text-green-300">
@@ -330,13 +366,22 @@ export default function VoiceDropModal({
                 Cancel
               </button>
               {isAgent && (
+                <>
                 <button
-                  onClick={drop}
-                  disabled={busy || !canDrop}
+                  onClick={() => drop(liveText, liveScriptId)}
+                  disabled={busy || !canDrop || !liveText.trim()}
                   className="rounded-lg bg-yellow-500 px-5 py-2 text-sm font-bold text-black hover:bg-yellow-400 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {busy && isDropping ? 'Dropping…' : '🎙️ Drop Voice Message'}
                 </button>
+                <button
+                  onClick={() => drop(vmText, vmScriptId)}
+                  disabled={busy || !canDrop || !vmText.trim()}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {busy && isDropping ? 'Droppingâ€¦' : 'ðŸ“± Drop Voicemail'}
+                </button>
+                </>
               )}
             </>
           )}

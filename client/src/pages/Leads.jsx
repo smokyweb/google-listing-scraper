@@ -104,7 +104,8 @@ export default function Leads() {
   const [showAddModal,       setShowAddModal]       = useState(false);
 
   // Voice Drop state
-  const [voiceScripts,     setVoiceScripts]     = useState([]);
+  const [liveVoiceScripts, setLiveVoiceScripts] = useState([]);
+  const [voicemailScripts, setVoicemailScripts] = useState([]);
   const [selectedScriptId, setSelectedScriptId] = useState('');
   const [voiceScript,      setVoiceScript]      = useState('');
   const [voiceDropLead,    setVoiceDropLead]    = useState(null);
@@ -127,24 +128,30 @@ export default function Leads() {
 
   // ── fetch voice scripts ────────────────────────────────────────────────────
   useEffect(() => {
-    apiFetch(`/voice-scripts?mode=${voiceDropMode === 'voicemail' ? 'voicemail' : 'live'}`)
-      .then(data => {
-        setVoiceScripts(data);
-        const active = data.find(s => s.is_active);
-        if (active) {
-          setSelectedScriptId(String(active.id));
-          setVoiceScript(active.script);
-        }
-      })
-      .catch(console.error);
+    Promise.all([
+      apiFetch('/voice-scripts?mode=live'),
+      apiFetch('/voice-scripts?mode=voicemail'),
+    ]).then(([live, voicemail]) => {
+      setLiveVoiceScripts(live);
+      setVoicemailScripts(voicemail);
+      const active = (voiceDropMode === 'voicemail' ? voicemail : live).find(s => s.is_active);
+      if (active) {
+        setSelectedScriptId(String(active.id));
+        setVoiceScript(active.script);
+      }
+    }).catch(console.error);
   }, []);
 
   // ── open voice drop modal ──────────────────────────────────────────────────
   const openVoiceDrop = useCallback((lead, mode) => {
     setVoiceDropLead(lead);
     setVoiceDropMode(mode);
+    const scripts = mode === 'voicemail' ? voicemailScripts : liveVoiceScripts;
+    const active = scripts.find(s => s.is_active) || scripts[0];
+    setSelectedScriptId(active ? String(active.id) : '');
+    setVoiceScript(active?.script || '');
     setVoiceDropOpen(true);
-  }, []);
+  }, [liveVoiceScripts, voicemailScripts]);
 
   // ── fetch leads ────────────────────────────────────────────────────────────
   const fetchLeads = async () => {
@@ -420,7 +427,9 @@ export default function Leads() {
       {voiceDropOpen && voiceDropLead && (
         <VoiceDropModal
           lead={voiceDropLead}
-          voiceScripts={voiceScripts}
+          voiceScripts={voiceDropMode === 'voicemail' ? voicemailScripts : liveVoiceScripts}
+          liveVoiceScripts={liveVoiceScripts}
+          voicemailScripts={voicemailScripts}
           selectedScriptId={selectedScriptId}
           scriptText={voiceScript}
           mode={voiceDropMode}
