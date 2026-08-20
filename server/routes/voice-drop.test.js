@@ -161,11 +161,11 @@ function ivrMenuTwiml(baseUrl) {
   );
 }
 
-function buildPlaybackTwiml(audioUrl, scriptText, baseUrl) {
+function buildPlaybackTwiml(audioUrl, scriptText, baseUrl, includeIvr = true) {
   const messageEl = audioUrl
     ? `<Play>${xmlEscape(audioUrl)}</Play>`
     : `<Say voice="alice">${xmlEscape(scriptText || 'Thank you for your time.')}</Say>`;
-  return `<?xml version="1.0" encoding="UTF-8"?><Response>${messageEl}${ivrMenuTwiml(baseUrl)}</Response>`;
+  return `<?xml version="1.0" encoding="UTF-8"?><Response>${messageEl}${includeIvr ? ivrMenuTwiml(baseUrl) : '<Hangup/>'}</Response>`;
 }
 
 /** Create a session tied to a lead row */
@@ -493,6 +493,13 @@ console.log('\n=== TwiML builders ===');
   assert('playback TwiML uses <Say> when no audioUrl', xml.includes('<Say'));
   assert('playback TwiML contains script text in Say', xml.includes('Hello there!'));
   assert('playback TwiML still has IVR menu', xml.includes('/api/calls/ivr-handler'));
+}
+
+{
+  // Voicemail-only drop ends after the message and never offers call controls.
+  const xml = buildPlaybackTwiml(null, 'Leave a voicemail.', 'https://leads.bluesapps.com', false);
+  assert('voicemail-only playback has no IVR menu', !xml.includes('/api/calls/ivr-handler'));
+  assert('voicemail-only playback hangs up', xml.includes('<Hangup/>'));
 }
 
 {

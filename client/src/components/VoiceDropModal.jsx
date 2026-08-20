@@ -76,6 +76,7 @@ export default function VoiceDropModal({
   const [vmText, setVmText] = useState(activeVm?.script || '');
   const [busy, setBusy] = useState(false);
   const [uiError, setUiError] = useState('');
+  const [lastDropMode, setLastDropMode] = useState('live');
   const timer = useRef(null);
 
   const isVoicemail = mode === 'voicemail';
@@ -142,10 +143,11 @@ export default function VoiceDropModal({
     }
   };
 
-  const drop = async (dropText = text, dropScriptId = selectedId) => {
+  const drop = async (dropText = text, dropScriptId = selectedId, dropMode = 'live') => {
     if (!sessionId) return;
     setBusy(true);
     setUiError('');
+    setLastDropMode(dropMode);
     try {
       await apiFetch('/voice-drop/drop-message', {
         method: 'POST',
@@ -153,6 +155,7 @@ export default function VoiceDropModal({
           sessionId,
           scriptText: dropText,
           voiceScriptId: dropScriptId ? Number(dropScriptId) : undefined,
+          dropMode,
         }),
       });
       // State will update via next poll
@@ -318,9 +321,14 @@ export default function VoiceDropModal({
                 The script was played. The recipient heard the Press 1/2/3/4 menu after.
               </p>
             )}
-            {isSuccess && isAgent && (
+            {isSuccess && isAgent && lastDropMode === 'live' && (
               <p className="mt-2 text-xs text-green-300">
                 Message dropped. Recipient heard the Press 1/2/3/4 menu after.
+              </p>
+            )}
+            {isSuccess && isAgent && lastDropMode === 'voicemail' && (
+              <p className="mt-2 text-xs text-green-300">
+                Voicemail message dropped. The call ended after the message; no connection menu was played.
               </p>
             )}
           </div>
@@ -375,7 +383,7 @@ export default function VoiceDropModal({
                   {busy && isDropping ? 'Dropping…' : '🎙️ Drop Voice Message'}
                 </button>
                 <button
-                  onClick={() => drop(vmText, vmScriptId)}
+                  onClick={() => drop(vmText, vmScriptId, 'voicemail')}
                   disabled={busy || !canDrop || !vmText.trim()}
                   className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
                 >

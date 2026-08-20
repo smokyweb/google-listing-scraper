@@ -235,13 +235,14 @@ router.all('/silence', (req, res) => {
 
 /**
  * Build the complete playback TwiML:
- *   <Play> or <Say> the message, then drop into the IVR menu.
+ *   <Play> or <Say> the message, then optionally drop into the IVR menu.
  */
-function buildPlaybackTwiml(audioUrl, scriptText, baseUrl) {
+function buildPlaybackTwiml(audioUrl, scriptText, baseUrl, includeIvr = true) {
   const messageEl = audioUrl
     ? `<Play>${xmlEscape(audioUrl)}</Play>`
     : `<Say voice="alice">${xmlEscape(scriptText || 'Thank you for your time.')}</Say>`;
-  return `<?xml version="1.0" encoding="UTF-8"?><Response>${messageEl}${ivrMenuTwiml(baseUrl)}</Response>`;
+  const nextStep = includeIvr ? ivrMenuTwiml(baseUrl) : '<Hangup/>';
+  return `<?xml version="1.0" encoding="UTF-8"?><Response>${messageEl}${nextStep}</Response>`;
 }
 
 /**
@@ -522,7 +523,7 @@ router.post('/start', authMiddleware, async (req, res) => {
       const audioUrl = await generateElevenLabsAudio(resolvedScript, baseUrl);
       if (audioUrl) updateSession(sessionId, { audio_url: audioUrl });
 
-      const callTwiml = buildPlaybackTwiml(audioUrl, resolvedScript, baseUrl);
+      const callTwiml = buildPlaybackTwiml(audioUrl, resolvedScript, baseUrl, false);
       const leadCall = await placeCall(config, {
         from: fromNumber,
         to: leadPhone,
@@ -600,7 +601,7 @@ router.get('/session/:id', authMiddleware, (req, res) => {
  */
 router.post('/drop-message', authMiddleware, async (req, res) => {
   try {
-    const { sessionId, scriptText, voiceScriptId } = req.body;
+    const { sessionId, scriptText, voiceScriptId, dropMode = 'live' } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
 
     const session = getSession(sessionId);
@@ -666,7 +667,12 @@ router.post('/drop-message', authMiddleware, async (req, res) => {
     updateSession(sessionId, { state: 'dropping' });
 
     // Play message to recipient then IVR menu — agent is NOT in this TwiML
-    const playTwiml = buildPlaybackTwiml(audioUrl, selectedDropScript, baseUrl);
+    const playTwiml = buildPlaybackTwiml(
+      audioUrl,
+      selectedDropScript,
+      baseUrl,
+      dropMode !== 'voicemail'
+    );
 
     // Redirect recipient call (kicks them out of conference to play message)
     await updateCall(config, session.recipient_call_sid, { twiml: playTwiml });
