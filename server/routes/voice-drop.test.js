@@ -503,6 +503,19 @@ console.log('\n=== TwiML builders ===');
 }
 
 {
+  // The live "Drop Voice Message" action keeps the response menu even when
+  // its selected script originated from the voicemail library.
+  const xml = buildPlaybackTwiml(
+    'https://example.com/audio.mp3',
+    null,
+    'https://leads.bluesapps.com',
+    true
+  );
+  assert('live drop playback keeps lead controls', xml.includes('/api/calls/ivr-handler'));
+  assert('live drop playback includes all lead options', xml.includes('Press 1') && xml.includes('Press 4'));
+}
+
+{
   // xmlEscape in conference name with special chars
   const xml = agentConferenceTwiml('vd-test&conf');
   assert('conference name is XML-escaped in agent TwiML', xml.includes('vd-test&amp;conf'));

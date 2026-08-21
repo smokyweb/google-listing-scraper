@@ -707,14 +707,12 @@ router.post('/drop-message', authMiddleware, async (req, res) => {
     // answers: live-person message or voicemail message. Resolve the choice
     // here so the Leads page cannot accidentally play its initial script.
     let selectedDropScript = scriptText || session.script_text;
-    let selectedScriptMode = null;
     if (voiceScriptId) {
       const selected = db.prepare(
         "SELECT script, mode FROM voice_scripts WHERE id = ? AND mode IN ('live', 'voicemail')"
       ).get(voiceScriptId);
       if (selected) {
         selectedDropScript = selected.script;
-        selectedScriptMode = selected.mode;
       }
     }
     if (session.lead_id && selectedDropScript) {
@@ -736,11 +734,17 @@ router.post('/drop-message', authMiddleware, async (req, res) => {
     updateSession(sessionId, { state: 'dropping' });
 
     // Play message to recipient then IVR menu — agent is NOT in this TwiML
+    // The action the salesperson chose controls the call flow.  A script can
+    // come from either library, but the normal "Drop Voice Message" action
+    // must always leave the lead in the response menu.  Previously we also
+    // used the selected script's library mode here, which silently removed
+    // the lead controls when a voicemail-library script was selected from
+    // the live call flow.
     const playTwiml = buildPlaybackTwiml(
       audioUrl,
       selectedDropScript,
       baseUrl,
-      dropMode !== 'voicemail' && selectedScriptMode !== 'voicemail'
+      dropMode !== 'voicemail'
     );
 
     // Redirect recipient call (kicks them out of conference to play message)
