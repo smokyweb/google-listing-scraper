@@ -482,11 +482,18 @@ router.post('/ivr-handler', async (req, res) => {
     return res.type('text/xml').send(twiml(`${say('Connecting you to a live staff member. Please hold.')} <Dial>${dialTo}</Dial>`));
   }
   if (digit === '2') {
-    return res.type('text/xml').send(twiml(`
-      <Gather input="speech" finishOnKey="#" action="${baseUrl}/api/calls/ivr-callback" method="POST" language="en-US" timeout="10">
-        ${say('Please state the day and time you would like us to call you back, then press the pound key.')}
-      </Gather>
-      ${say('We did not receive your input. Goodbye.')} <Hangup/>`));
+    // A callback request must be created from the keypad action itself. The
+    // previous flow waited for a separate speech-recognition request (and a
+    // trailing #), so callers who simply pressed 2 saw no callback recorded.
+    if (lead) {
+      db.prepare('INSERT INTO callbacks (lead_id, lead_name, phone, raw_speech, status) VALUES (?, ?, ?, ?, ?)')
+        .run(lead.id, lead.name, fromPhone, 'Requested by pressing 2', 'pending');
+    } else {
+      db.prepare('INSERT INTO callbacks (lead_id, lead_name, phone, raw_speech, status) VALUES (?, ?, ?, ?, ?)')
+        .run(null, fromPhone, fromPhone, 'Requested by pressing 2', 'pending');
+    }
+    logCall('callback_requested', '2');
+    return res.type('text/xml').send(twiml(`${say('Thank you. We have recorded your callback request and will call you back. Goodbye.')} <Hangup/>`));
   }
   if (digit === '3') {
     logCall('meeting_scheduled', '3');
