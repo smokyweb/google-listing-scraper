@@ -594,11 +594,10 @@ router.post('/start', authMiddleware, async (req, res) => {
     );
 
     // Do not wait for SignalWire's agent answered callback to create the lead
-    // leg.  Some Compatibility API accounts accept the call but omit that
-    // callback, leaving the session stuck at "initiated" and never bridging.
-    // Both legs can safely wait in the same conference until the other joins.
+    // leg. Both legs can safely wait in the same conference until the other
+    // joins, but the session must remain initiated until the salesperson
+    // actually answers.
     await startRecipientLeg(config, getSession(sessionId), baseUrl);
-    updateSession(sessionId, { state: 'agent_answered' });
 
     // Pre-generate audio in background
     generateElevenLabsAudio(resolvedScript, baseUrl)
@@ -624,13 +623,25 @@ router.get('/session/:id', authMiddleware, async (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found' });
   if (!canAccessSession(session, req.user)) return res.status(403).json({ error: 'Forbidden' });
 
-  // Reconcile from SignalWire when a provider callback was dropped.  This is
-  // intentionally limited to the live-voice lead leg because the UI polls
-  // this endpoint while waiting for the salesperson's Drop buttons.
+  // Reconcile from SignalWire when a provider callback was dropped. The
+  // salesperson leg is checked first; otherwise the session could expose
+  // lead-drop controls even though the salesperson never received the call.
+  if (session.mode === 'agent' && session.agent_call_sid && session.state === 'initiated') {
+    const agentStatus = await fetchCallStatus(getSignalWireConfig(), session.agent_call_sid);
+    if (agentStatus === 'answered') {
+      updateSession(session.id, { state: 'agent_answered' });
+      session.state = 'agent_answered';
+    } else if (['no-answer', 'busy', 'failed', 'canceled', 'completed'].includes(agentStatus)) {
+      updateSession(session.id, { state: 'failed', error_msg: `Salesperson call ${agentStatus}` });
+      session.state = 'failed';
+      session.error_msg = `Salesperson call ${agentStatus}`;
+    }
+  }
+
   if (
     session.mode === 'agent' &&
     session.recipient_call_sid &&
-    ['agent_answered', 'initiated'].includes(session.state)
+    session.state === 'agent_answered'
   ) {
     const leadStatus = await fetchCallStatus(getSignalWireConfig(), session.recipient_call_sid);
     // REST status can report in-progress while the outbound leg is still
@@ -906,8 +917,17 @@ router.post('/webhook/call-status', async (req, res) => {
       }
     } else if (leg === 'lead') {
       if (callAnswered) {
-        updateSession(sessionId, { state: 'recipient_answered', recipient_call_sid: CallSid });
-        console.log(`[VoiceDrop][agent] Lead answered — ready to drop`);
+        const cur = getSession(sessionId);
+        // The lead can answer before the salesperson callback arrives because
+        // both legs are started in parallel. Preserve the SID, but do not
+        // expose drop controls until the salesperson is confirmed connected.
+        if (cur?.state === 'initiated') {
+          updateSession(sessionId, { recipient_call_sid: CallSid });
+          console.log(`[VoiceDrop][agent] Lead answered while salesperson is still connecting`);
+        } else {
+          updateSession(sessionId, { state: 'recipient_answered', recipient_call_sid: CallSid });
+          console.log(`[VoiceDrop][agent] Lead answered — ready to drop`);
+        }
       } else if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus)) {
         updateSession(sessionId, { state: 'failed', error_msg: `Lead call ${CallStatus}` });
         const cur = getSession(sessionId);
