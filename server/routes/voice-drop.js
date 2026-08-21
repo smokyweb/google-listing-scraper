@@ -593,11 +593,9 @@ router.post('/start', authMiddleware, async (req, res) => {
       `[VoiceDrop][agent] Session ${sessionId}: calling agent ${agentPhone} SID=${agentCall.sid}`
     );
 
-    // Do not wait for SignalWire's agent answered callback to create the lead
-    // leg. Both legs can safely wait in the same conference until the other
-    // joins, but the session must remain initiated until the salesperson
-    // actually answers.
-    await startRecipientLeg(config, getSession(sessionId), baseUrl);
+    // The lead leg is started after the salesperson answers. Keeping the
+    // legs sequential avoids dialing both parties before the agent is ready
+    // and makes a missing salesperson call unambiguous.
 
     // Pre-generate audio in background
     generateElevenLabsAudio(resolvedScript, baseUrl)
@@ -631,6 +629,20 @@ router.get('/session/:id', authMiddleware, async (req, res) => {
     if (agentStatus === 'answered') {
       updateSession(session.id, { state: 'agent_answered' });
       session.state = 'agent_answered';
+      try {
+        session.recipient_call_sid = await startRecipientLeg(
+          getSignalWireConfig(),
+          getSession(session.id),
+          PUBLIC_BASE_URL
+        );
+      } catch (err) {
+        updateSession(session.id, {
+          state: 'failed',
+          error_msg: `Failed to call lead: ${err.message}`,
+        });
+        session.state = 'failed';
+        session.error_msg = `Failed to call lead: ${err.message}`;
+      }
     } else if (['no-answer', 'busy', 'failed', 'canceled', 'completed'].includes(agentStatus)) {
       updateSession(session.id, { state: 'failed', error_msg: `Salesperson call ${agentStatus}` });
       session.state = 'failed';
