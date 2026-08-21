@@ -633,7 +633,11 @@ router.get('/session/:id', authMiddleware, async (req, res) => {
     ['agent_answered', 'initiated'].includes(session.state)
   ) {
     const leadStatus = await fetchCallStatus(getSignalWireConfig(), session.recipient_call_sid);
-    if (['answered', 'in-progress'].includes(leadStatus)) {
+    // REST status can report in-progress while the outbound leg is still
+    // being established on some Compatibility API accounts. Only the
+    // explicit answered callback is safe for enabling the salesperson's
+    // drop controls; otherwise the UI can claim the lead answered early.
+    if (leadStatus === 'answered') {
       updateSession(session.id, { state: 'recipient_answered' });
       session.state = 'recipient_answered';
     } else if (['no-answer', 'busy', 'failed', 'canceled', 'completed'].includes(leadStatus)) {
@@ -822,9 +826,10 @@ router.post('/webhook/call-status', async (req, res) => {
 
   const { sid: sessionId, leg } = req.query;
   const { CallStatus, CallSid } = req.body;
-  // SignalWire may report the answered callback as either `answered` or
-  // `in-progress` depending on the Compatibility API account/version.
-  const callAnswered = ['answered', 'in-progress'].includes(CallStatus);
+  // Only an explicit `answered` callback confirms that the remote party has
+  // answered. `in-progress` is also used for an outbound leg that is still
+  // being established by some Compatibility API accounts.
+  const callAnswered = CallStatus === 'answered';
 
   if (!sessionId || !leg) {
     console.warn('[VoiceDrop webhook] Missing sid or leg');
