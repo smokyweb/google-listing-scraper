@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 function getOAuthClient() {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID || db.prepare("SELECT value FROM settings WHERE key='google_calendar_client_id'").get()?.value;
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET || db.prepare("SELECT value FROM settings WHERE key='google_calendar_client_secret'").get()?.value;
-  const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+  const baseUrl = process.env.BASE_URL || 'https://listing-scraper.bluesapps.com';
   return new google.auth.OAuth2(clientId, clientSecret, `${baseUrl}/api/salesperson-calendar/callback`);
 }
 
