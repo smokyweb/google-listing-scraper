@@ -62,6 +62,11 @@ function getElevenLabsConfig() {
 // refresh-token setting, which made a successfully connected admin calendar
 // appear unavailable to callers.
 function getAdminCalendarCredentials() {
+  // Keep the explicitly configured refresh token authoritative. This was the
+  // credential used by the IVR before the admin web OAuth token was added.
+  const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || getSetting('google_calendar_refresh_token');
+  if (refreshToken) return { refresh_token: refreshToken };
+
   const tokenValue = getSetting('google_calendar_tokens');
   if (tokenValue) {
     try {
@@ -72,8 +77,7 @@ function getAdminCalendarCredentials() {
     }
   }
 
-  const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || getSetting('google_calendar_refresh_token');
-  return refreshToken ? { refresh_token: refreshToken } : null;
+  return null;
 }
 function resolvePhoneNumber(phoneNumberId, fallback) {
   if (phoneNumberId) {
