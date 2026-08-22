@@ -176,15 +176,13 @@ async function getAvailableSlots(date) {
   // Use YYYY-MM-DD format in ET for freebusy query
   // Pass local datetime strings + timeZone to let Google handle DST
   const dateStr = date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
-  const startET = new Date(`${dateStr}T09:00:00`);
-  const endET = new Date(`${dateStr}T17:00:00`);
+  const offset = easternOffsetFor(dateStr);
 
   try {
     const fb = await calendar.freebusy.query({
       requestBody: {
-        timeMin: `${dateStr}T09:00:00`,
-        timeMax: `${dateStr}T17:00:00`,
-        timeZone: 'America/New_York',
+        timeMin: `${dateStr}T09:00:00${offset}`,
+        timeMax: `${dateStr}T17:00:00${offset}`,
         items: [{ id: 'primary' }],
       },
     });
@@ -193,8 +191,8 @@ async function getAvailableSlots(date) {
     for (let hour = 9; hour < 17; hour++) {
       for (let min of [0, 30]) {
         // Create slot as local datetime string for ET
-        const slotTimeStr = `${dateStr}T${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:00`;
-        const slotStart = new Date(slotTimeStr); // local time
+        const slotTimeStr = `${dateStr}T${String(hour).padStart(2,'0')}:${String(min).padStart(2,'0')}:00${offset}`;
+        const slotStart = new Date(slotTimeStr); // Eastern Time converted to UTC
         const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
         const conflict = busy.some(b => {
           const bs = new Date(b.start), be = new Date(b.end);
@@ -207,7 +205,7 @@ async function getAvailableSlots(date) {
     }
     return slots;
   } catch (e) {
-    console.error('freebusy error', e.message);
+    console.error('freebusy error', e.response?.data || e.message);
     return [];
   }
 }
@@ -308,6 +306,13 @@ function formatTime(slot) {
 }
 function formatDate(slot) {
   return slot.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+function easternOffsetFor(dateStr) {
+  const probe = new Date(`${dateStr}T12:00:00Z`);
+  const part = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'longOffset' })
+    .formatToParts(probe).find(p => p.type === 'timeZoneName');
+  return (part?.value || 'GMT-05:00').replace('GMT', '');
 }
 
 // â”€â”€â”€ TTS PREVIEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
