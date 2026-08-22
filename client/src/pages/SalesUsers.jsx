@@ -56,7 +56,7 @@ export default function SalesUsers() {
   const [availableNumbers, setAvailableNumbers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState(null);
-  const [form, setForm] = useState({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' });
+  const [form, setForm] = useState({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'', ivr_transfer_number:'' });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -75,7 +75,7 @@ export default function SalesUsers() {
 
   const openAdd = () => {
     setEditUser(null);
-    setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'' });
+    setForm({ name:'', email:'', password:'', states:[], cities:'', phone_number_id:'', forward_number:'', ivr_transfer_number:'' });
     setAvailableNumbers([]); // reset while loading
     loadAvailable();         // fetch only numbers with no owner
     setShowAdd(true);
@@ -92,6 +92,7 @@ export default function SalesUsers() {
       // Keep current assignment ID so saving without changes preserves it.
       phone_number_id: u.phone_number_id ? String(u.phone_number_id) : '',
       forward_number: u.forward_number || '',
+      ivr_transfer_number: u.ivr_transfer_number || '',
     });
     setAvailableNumbers([]); // reset while loading
     loadAvailable();         // fetch only numbers with no owner (never the current user's)
@@ -193,6 +194,10 @@ export default function SalesUsers() {
               <div><label className="text-xs text-gray-400">Forward Incoming Calls To</label>
                 <input value={form.forward_number} onChange={e=>setForm({...form,forward_number:e.target.value})} placeholder="Salesperson's personal cell: (865) 555-1234" className={inp} />
                 <p className="text-xs text-gray-600 mt-0.5">Calls to their SignalWire number will forward here</p>
+              </div>
+              <div><label className="text-xs text-gray-400">Press 1 Transfer Number</label>
+                <input value={form.ivr_transfer_number} onChange={e=>setForm({...form,ivr_transfer_number:e.target.value})} placeholder="Number to call when a lead presses 1" className={inp} />
+                <p className="text-xs text-gray-600 mt-0.5">Optional. Used only for Press 1 during live voice messages; blank uses the forwarding number above.</p>
               </div>
               <div className="col-span-2"><label className="text-xs text-gray-400">Restricted to States (comma-separated codes, e.g. TX,CA,FL — leave blank for all)</label>
                 <input value={Array.isArray(form.states) ? form.states.join(',') : form.states} onChange={e=>setForm({...form,states:e.target.value})} placeholder="TX,CA,FL" className={inp} /></div>

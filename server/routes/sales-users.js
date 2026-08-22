@@ -34,7 +34,7 @@ router.get('/', authMiddleware, (req, res) => {
 });
 
 router.post('/', authMiddleware, adminOnly, (req, res) => {
-  const { name, email, password, states = [], cities = [], phone_number_id, forward_number } = req.body;
+  const { name, email, password, states = [], cities = [], phone_number_id, forward_number, ivr_transfer_number } = req.body;
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required' });
 
   // Normalize phone_number_id: must be a positive integer or null
@@ -49,9 +49,9 @@ router.post('/', authMiddleware, adminOnly, (req, res) => {
   }
 
   try {
-    const r = db.prepare('INSERT INTO sales_users (name, email, password_hash, states, cities, phone_number_id, forward_number) VALUES (?,?,?,?,?,?,?)')
-      .run(name, email, hashPassword(password), JSON.stringify(states), JSON.stringify(cities), phoneId, forward_number || null);
-    res.status(201).json({ id: r.lastInsertRowid, name, email, states, cities, phone_number_id: phoneId, forward_number });
+    const r = db.prepare('INSERT INTO sales_users (name, email, password_hash, states, cities, phone_number_id, forward_number, ivr_transfer_number) VALUES (?,?,?,?,?,?,?,?)')
+      .run(name, email, hashPassword(password), JSON.stringify(states), JSON.stringify(cities), phoneId, forward_number || null, ivr_transfer_number || null);
+    res.status(201).json({ id: r.lastInsertRowid, name, email, states, cities, phone_number_id: phoneId, forward_number, ivr_transfer_number });
   } catch (e) {
     if (e.message.includes('UNIQUE') && e.message.includes('phone_number_id')) return res.status(409).json({ error: 'Phone number is already assigned to another salesperson.' });
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Email already exists' });
@@ -60,7 +60,7 @@ router.post('/', authMiddleware, adminOnly, (req, res) => {
 });
 
 router.patch('/:id', authMiddleware, (req, res) => {
-  const { name, email, password, states, cities, phone_number_id, is_active, forward_number } = req.body;
+  const { name, email, password, states, cities, phone_number_id, is_active, forward_number, ivr_transfer_number } = req.body;
   const userId = parseInt(req.params.id, 10);
   if (req.user.role === 'salesperson') {
     if (userId !== req.user.userId) return res.status(403).json({ error: 'You may only update your own profile.' });
@@ -101,7 +101,7 @@ router.patch('/:id', authMiddleware, (req, res) => {
   }
 
   try {
-    db.prepare('UPDATE sales_users SET name=?, email=?, password_hash=?, states=?, cities=?, phone_number_id=?, is_active=?, forward_number=? WHERE id=?')
+    db.prepare('UPDATE sales_users SET name=?, email=?, password_hash=?, states=?, cities=?, phone_number_id=?, is_active=?, forward_number=?, ivr_transfer_number=? WHERE id=?')
       .run(
         name !== undefined ? name : existing.name,
         email !== undefined ? email : existing.email,
@@ -111,6 +111,7 @@ router.patch('/:id', authMiddleware, (req, res) => {
         validPhoneId,
         is_active !== undefined ? is_active : existing.is_active,
         forward_number !== undefined ? (forward_number || null) : existing.forward_number,
+        ivr_transfer_number !== undefined ? (ivr_transfer_number || null) : existing.ivr_transfer_number,
         userId
       );
     res.json({ success: true });
