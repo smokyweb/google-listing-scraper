@@ -56,6 +56,25 @@ function getElevenLabsConfig() {
     voiceId: process.env.ELEVENLABS_VOICE_ID || getSetting('elevenlabs_voice_id') || '21m00Tcm4TlvDq8ikWAM',
   };
 }
+
+// The admin Calendar page stores the OAuth response as
+// `google_calendar_tokens`. The IVR historically only looked for the legacy
+// refresh-token setting, which made a successfully connected admin calendar
+// appear unavailable to callers.
+function getAdminCalendarCredentials() {
+  const tokenValue = getSetting('google_calendar_tokens');
+  if (tokenValue) {
+    try {
+      const tokens = JSON.parse(tokenValue);
+      if (tokens && (tokens.refresh_token || tokens.access_token)) return tokens;
+    } catch (err) {
+      console.error('Invalid stored Google Calendar tokens:', err.message);
+    }
+  }
+
+  const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || getSetting('google_calendar_refresh_token');
+  return refreshToken ? { refresh_token: refreshToken } : null;
+}
 function resolvePhoneNumber(phoneNumberId, fallback) {
   if (phoneNumberId) {
     const row = db.prepare('SELECT number FROM phone_numbers WHERE id = ?').get(phoneNumberId);
@@ -147,11 +166,11 @@ function parseSpeechDate(text) {
 async function getAvailableSlots(date) {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID || getSetting('google_calendar_client_id');
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET || getSetting('google_calendar_client_secret');
-  const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || getSetting('google_calendar_refresh_token') || getSetting('google_calendar_refresh_token');
-  if (!clientId || !clientSecret || !refreshToken) return [];
+  const credentials = getAdminCalendarCredentials();
+  if (!clientId || !clientSecret || !credentials) return [];
 
   const auth = new google.auth.OAuth2(clientId, clientSecret);
-  auth.setCredentials({ refresh_token: refreshToken });
+  auth.setCredentials(credentials);
   const calendar = google.calendar({ version: 'v3', auth });
 
   // Use YYYY-MM-DD format in ET for freebusy query
@@ -198,16 +217,16 @@ async function createCalendarEvent(lead, slotDate, email, salespersonId) {
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET || getSetting('google_calendar_client_secret');
 
   // Use salesperson's calendar if available, otherwise fall back to admin calendar
-  let refreshToken = null;
+  let credentials = null;
   if (salespersonId) {
     const sp = db.prepare('SELECT gcal_refresh_token, gcal_access_token FROM sales_users WHERE id=?').get(salespersonId);
-    if (sp?.gcal_refresh_token) refreshToken = sp.gcal_refresh_token;
+    if (sp?.gcal_refresh_token) credentials = { refresh_token: sp.gcal_refresh_token };
   }
-  if (!refreshToken) refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN || getSetting('google_calendar_refresh_token');
-  if (!clientId || !clientSecret || !refreshToken) throw new Error('Calendar not configured');
+  if (!credentials) credentials = getAdminCalendarCredentials();
+  if (!clientId || !clientSecret || !credentials) throw new Error('Calendar not configured');
 
   const auth = new google.auth.OAuth2(clientId, clientSecret);
-  auth.setCredentials({ refresh_token: refreshToken });
+  auth.setCredentials(credentials);
   const calendar = google.calendar({ version: 'v3', auth });
 
   const end = new Date(slotDate);

@@ -28,7 +28,9 @@ router.get('/auth', authMiddleware, (req, res) => {
 
   const url = client.generateAuthUrl({
     access_type: 'offline',
-    scope: ['https://www.googleapis.com/auth/calendar.readonly'],
+    // The voice IVR both checks availability and creates Google Meet events.
+    // readonly permits the first operation but not the second.
+    scope: ['https://www.googleapis.com/auth/calendar'],
   });
 
   res.json({ url });
