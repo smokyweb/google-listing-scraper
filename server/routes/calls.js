@@ -265,9 +265,10 @@ ${spName}${spPhone ? '\n' + spPhone : ''}`;
     requestBody: {
       summary: meetTitle,
       description: meetDescription, // Will be updated with real Meet link after creation
-      // Pass datetime as local ET string with timezone — Google handles DST
-      start: { dateTime: slotDate.toISOString().slice(0,19), timeZone: 'America/New_York' },
-      end: { dateTime: end.toISOString().slice(0,19), timeZone: 'America/New_York' },
+      // Send Eastern wall-clock values with the timezone separately. Do not
+      // slice an ISO UTC value, or a 9 AM ET slot becomes 1 PM ET in Google.
+      start: { dateTime: easternDateTimeString(slotDate), timeZone: 'America/New_York' },
+      end: { dateTime: easternDateTimeString(end), timeZone: 'America/New_York' },
       attendees: email ? [{ email }] : [],
       conferenceData: {
         createRequest: { requestId: uuidv4(), conferenceSolutionKey: { type: 'hangoutsMeet' } },
@@ -275,9 +276,18 @@ ${spName}${spPhone ? '\n' + spPhone : ''}`;
       reminders: { useDefault: true },
     },
   });
-  const eventData = eventResult.data;
+  let eventData = eventResult.data;
 
-  // Now update the description with the real Google Meet link
+  // Conference creation can be asynchronous. Give Google a moment, then
+  // fetch the event again so the Meet link is available before patching.
+  await new Promise(resolve => setTimeout(resolve, 1200));
+  if (!eventData.hangoutLink && !eventData.conferenceData?.entryPoints?.length) {
+    try {
+      eventData = (await calendar.events.get({ calendarId: 'primary', eventId: eventData.id })).data;
+    } catch (getErr) {
+      console.error('Failed to refresh Meet event:', getErr.message);
+    }
+  }
   const meetLink = eventData.hangoutLink || eventData.conferenceData?.entryPoints?.[0]?.uri || '';
   if (meetLink && meetDescription.includes('%%MEET_LINK%%')) {
     const dialInfo = eventData.conferenceData?.entryPoints?.find(e => e.entryPointType === 'phone');
@@ -299,13 +309,21 @@ ${spName}${spPhone ? '\n' + spPhone : ''}`;
 }
 
 function formatSlotLabel(slot) {
-  return slot.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+  return slot.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 }
 function formatTime(slot) {
-  return slot.toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return slot.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hour12: true });
 }
 function formatDate(slot) {
-  return slot.toLocaleString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  return slot.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+function easternDateTimeString(date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date).reduce((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 function easternOffsetFor(dateStr) {
