@@ -6,6 +6,11 @@ const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
 
+// Keep webhook URLs on the same public host as the voice-drop flow. The old
+// leads.bluesapps.com fallback belongs to a previous deployment and caused
+// DTMF actions from Live Voice Message calls to post to the wrong app.
+const PUBLIC_BASE_URL = process.env.BASE_URL || 'https://listing-scraper.bluesapps.com';
+
 // Ensure audio directory exists for ElevenLabs pre-generated files
 const AUDIO_DIR = path.join(__dirname, '..', '..', 'data', 'audio');
 fs.mkdirSync(AUDIO_DIR, { recursive: true });
@@ -337,7 +342,7 @@ router.post('/trigger', authMiddleware, async (req, res) => {
     }
 
     const isMock = !swConfig.projectId || !swConfig.token;
-    const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+    const baseUrl = PUBLIC_BASE_URL;
 
     let leads;
     if (leadIds?.length > 0) {
@@ -427,7 +432,7 @@ router.post('/ivr-handler', async (req, res) => {
   const digit = req.body.Digits;
   const callSid = req.body.CallSid || 'unknown';
   const fromPhone = req.body.To || req.body.From || '';
-  const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+  const baseUrl = PUBLIC_BASE_URL;
   const transferNumber = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
 
 
@@ -543,7 +548,7 @@ router.post('/ivr-calendar-day', async (req, res) => {
   const speech = req.body.SpeechResult || '';
   const callSid = req.body.CallSid || 'unknown';
   const fromPhone = req.body.To || req.body.From || '';
-  const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+  const baseUrl = PUBLIC_BASE_URL;
 
   const date = parseSpeechDate(speech);
   if (!date) {
@@ -580,7 +585,7 @@ router.post('/ivr-calendar-slot', (req, res) => {
   const digit = req.body.Digits;
   const callSid = req.body.CallSid || 'unknown';
   const fromPhone = req.body.To || req.body.From || '';
-  const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+  const baseUrl = PUBLIC_BASE_URL;
 
   const session = getIvrSession(callSid);
   const slots = (session.dataObj.slots || []).map(s => new Date(s));
@@ -615,7 +620,7 @@ router.post('/ivr-calendar-email-confirm', async (req, res) => {
   const digit = req.body.Digits;
   const callSid = req.body.CallSid || 'unknown';
   const fromPhone = req.body.To || req.body.From || '';
-  const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+  const baseUrl = PUBLIC_BASE_URL;
 
   const session = getIvrSession(callSid);
   const lead = session.dataObj.leadId ? db.prepare('SELECT * FROM leads WHERE id=?').get(session.dataObj.leadId) : findLeadByPhone(fromPhone);
@@ -689,7 +694,7 @@ async function finishCalendarBooking(res, session, lead, email) {
 router.post('/inbound', (req, res) => {
   const calledNumber = req.body.To || ''; // the SignalWire number that was called
   const callerNumber = req.body.From || 'unknown';
-  const baseUrl = process.env.BASE_URL || 'https://leads.bluesapps.com';
+  const baseUrl = PUBLIC_BASE_URL;
   const globalTransfer = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
 
   // Look up which phone number was called, find assigned salesperson
