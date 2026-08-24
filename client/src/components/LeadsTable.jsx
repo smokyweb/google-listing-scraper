@@ -26,7 +26,7 @@ const LEAD_STATUS_COLORS = {
   sent_live_vm:   'bg-yellow-900/50 text-yellow-300',
   voicemail_drop: 'bg-blue-900/50 text-blue-300',
 };
-const LEAD_STATUSES       = ['new', 'callback', 'scheduled', 'not_interested', 'send_quote', 'sent_live_vm', 'voicemail_drop', 'completed'];
+const LEAD_STATUSES       = ['new', 'sent_live_vm', 'voicemail_drop', 'callback', 'scheduled', 'not_interested', 'completed'];
 const LEAD_STATUS_LABELS  = {
   new: 'New', callback: 'Call Back', scheduled: 'Scheduled',
   not_interested: 'Not Interested', send_quote: 'Send Quote',
