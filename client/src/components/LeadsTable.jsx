@@ -25,12 +25,13 @@ const LEAD_STATUS_COLORS = {
   completed:      'bg-gray-700 text-gray-300',
   sent_live_vm:   'bg-yellow-900/50 text-yellow-300',
   voicemail_drop: 'bg-blue-900/50 text-blue-300',
+  sent_sms:       'bg-green-900/50 text-green-300',
 };
-const LEAD_STATUSES       = ['new', 'sent_live_vm', 'voicemail_drop', 'callback', 'scheduled', 'not_interested', 'completed'];
+const LEAD_STATUSES       = ['new', 'sent_live_vm', 'voicemail_drop', 'sent_sms', 'callback', 'scheduled', 'not_interested', 'completed'];
 const LEAD_STATUS_LABELS  = {
   new: 'New', callback: 'Call Back', scheduled: 'Scheduled',
   not_interested: 'Not Interested', send_quote: 'Send Quote',
-  sent_live_vm: 'Sent Live VM', voicemail_drop: 'Voicemail Drop', completed: 'Completed',
+  sent_live_vm: 'Sent Live VM', voicemail_drop: 'Voicemail Drop', sent_sms: 'Sent SMS', completed: 'Completed',
 };
 
 export default function LeadsTable({
@@ -58,7 +59,7 @@ export default function LeadsTable({
   // Only show active sales users in the assignment dropdown.
   const activeSalesUsers = salesUsers.filter(u => u.is_active);
 
-  const channelBadge = (status) => {
+  const channelBadge = (status, label) => {
     const colors = {
       pending: 'bg-gray-700 text-gray-400',
       sent:    'bg-green-900 text-green-300',
@@ -67,7 +68,7 @@ export default function LeadsTable({
     };
     return (
       <span className={`px-1.5 py-0.5 rounded text-xs ${colors[status] || colors.pending}`}>
-        {status}
+        {label || status}
       </span>
     );
   };
@@ -218,8 +219,10 @@ export default function LeadsTable({
               {/* Channels */}
               <td className="p-3">
                 <div className="flex gap-1 flex-wrap">
-                  {channelBadge(lead.email_status)}
-                  {channelBadge(lead.call_status)}
+                  {channelBadge(lead.email_status, lead.email_status === 'sent' ? 'Sent Email' : undefined)}
+                  {lead.status === 'sent_live_vm'
+                    ? channelBadge('sent_live_vm')
+                    : channelBadge(lead.call_status)}
                   {channelBadge(lead.sms_status)}
                 </div>
               </td>
