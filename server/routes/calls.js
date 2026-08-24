@@ -5,6 +5,7 @@ const { google } = require('googleapis');
 const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
 const path = require('path');
+const { sendSalespersonNotice } = require('../services/notifications');
 
 // Keep webhook URLs on the same public host as the voice-drop flow. The old
 // leads.bluesapps.com fallback belongs to a previous deployment and caused
@@ -314,6 +315,30 @@ ${spName}${spPhone ? '\n' + spPhone : ''}`;
 function formatSlotLabel(slot) {
   return slot.toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 }
+
+function findSalespersonForLeadOrNumber(lead, sourceNumber) {
+  if (lead?.assigned_user_id) {
+    const assigned = db.prepare('SELECT * FROM sales_users WHERE id = ? AND is_active = 1').get(lead.assigned_user_id);
+    if (assigned) return assigned;
+  }
+  const n = normalizePhone(sourceNumber);
+  if (!n) return null;
+  const phoneEntry = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?")
+    .get('%' + n);
+  return phoneEntry
+    ? db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id)
+    : null;
+}
+
+function notifyCallbackRequested(lead, phone, requestedTime) {
+  const salesperson = findSalespersonForLeadOrNumber(lead, phone);
+  if (!salesperson) return;
+  const leadName = lead?.name || phone || 'Unknown caller';
+  const subject = `Call back requested: ${leadName}`;
+  const text = `A call back was requested by ${leadName} (${phone || 'phone unavailable'}).\n\nRequested time: ${requestedTime || 'Not provided'}`;
+  const html = `<p>A call back was requested by <strong>${leadName}</strong> (${phone || 'phone unavailable'}).</p><p><strong>Requested time:</strong> ${requestedTime || 'Not provided'}</p>`;
+  sendSalespersonNotice(salesperson, { subject, text, html });
+}
 function formatTime(slot) {
   return slot.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit', hour12: true });
 }
@@ -545,6 +570,7 @@ router.post('/ivr-handler', async (req, res) => {
       db.prepare('INSERT INTO callbacks (lead_id, lead_name, phone, raw_speech, status) VALUES (?, ?, ?, ?, ?)')
         .run(null, fromPhone, fromPhone, 'Requested by pressing 2', 'pending');
     }
+    notifyCallbackRequested(lead, req.body.From || fromPhone, 'Not provided');
     logCall('callback_requested', '2');
     return res.type('text/xml').send(twiml(`${say('Thank you. We have recorded your callback request and will call you back. Goodbye.')} <Hangup/>`));
   }
@@ -588,6 +614,7 @@ router.post('/ivr-callback', (req, res) => {
   const lead = findLeadByPhone(fromPhone);
   db.prepare('INSERT INTO callbacks (lead_id, lead_name, phone, raw_speech, status) VALUES (?, ?, ?, ?, ?)')
     .run(lead?.id || null, lead?.name || fromPhone, fromPhone, speech, 'pending');
+  notifyCallbackRequested(lead, req.body.From || fromPhone, speech);
   return res.type('text/xml').send(twiml(`${say(`Thank you. We will call you back ${speech}. Goodbye.`)} <Hangup/>`));
 });
 
@@ -721,12 +748,24 @@ async function finishCalendarBooking(res, session, lead, email) {
       }
     }
   } catch(e) {}
+  if (!salespersonId) salespersonId = findSalespersonForLeadOrNumber(lead, session.dataObj?.fromNumber)?.id || null;
   if (!selectedSlot) {
     return res.type('text/xml').send(twiml(`${say('Something went wrong. Please call back to schedule your meeting. Goodbye.')} <Hangup/>`));
   }
   try {
     const event = await createCalendarEvent(lead || { name: session.lead_phone, phone: session.lead_phone, city: '', state: '', keyword: '' }, selectedSlot, email, salespersonId);
     const meetLink = event?.hangoutLink || event?.conferenceData?.entryPoints?.[0]?.uri || '';
+    const salesperson = salespersonId
+      ? db.prepare('SELECT * FROM sales_users WHERE id = ? AND is_active = 1').get(salespersonId)
+      : null;
+    if (salesperson) {
+      const leadName = lead?.name || session.lead_phone || 'Unknown lead';
+      const slotLabel = formatSlotLabel(selectedSlot);
+      const subject = `Virtual meeting scheduled: ${leadName}`;
+      const text = `A virtual meeting was scheduled with ${leadName} (${lead?.phone || session.lead_phone || 'phone unavailable'}).\n\nWhen: ${slotLabel}${meetLink ? `\nGoogle Meet: ${meetLink}` : ''}`;
+      const html = `<p>A virtual meeting was scheduled with <strong>${leadName}</strong> (${lead?.phone || session.lead_phone || 'phone unavailable'}).</p><p><strong>When:</strong> ${slotLabel}</p>${meetLink ? `<p><strong>Google Meet:</strong> <a href="${meetLink}">${meetLink}</a></p>` : ''}`;
+      sendSalespersonNotice(salesperson, { subject, text, html });
+    }
     const confirmation = `Your meeting has been scheduled for ${formatSlotLabel(selectedSlot)}. ${email ? `A Google Meet link has been sent to ${email}.` : 'Check your calendar for the Google Meet link.'} Goodbye.`;
     return res.type('text/xml').send(twiml(`${say(confirmation)} <Hangup/>`));
   } catch (err) {
