@@ -23,11 +23,14 @@ const LEAD_STATUS_COLORS = {
   not_interested: 'bg-red-900/50 text-red-300',
   send_quote:     'bg-green-900/50 text-green-300',
   completed:      'bg-gray-700 text-gray-300',
+  sent_live_vm:   'bg-yellow-900/50 text-yellow-300',
+  voicemail_drop: 'bg-blue-900/50 text-blue-300',
 };
-const LEAD_STATUSES       = ['new', 'callback', 'scheduled', 'not_interested', 'send_quote', 'completed'];
+const LEAD_STATUSES       = ['new', 'callback', 'scheduled', 'not_interested', 'send_quote', 'sent_live_vm', 'voicemail_drop', 'completed'];
 const LEAD_STATUS_LABELS  = {
   new: 'New', callback: 'Call Back', scheduled: 'Scheduled',
-  not_interested: 'Not Interested', send_quote: 'Send Quote', completed: 'Completed',
+  not_interested: 'Not Interested', send_quote: 'Send Quote',
+  sent_live_vm: 'Sent Live VM', voicemail_drop: 'Voicemail Drop', completed: 'Completed',
 };
 
 export default function LeadsTable({
