@@ -234,7 +234,13 @@ export default function EmailCampaign() {
             </button>
             <button onClick={handleSend} disabled={sending || !subject || !body}
               className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
-              {sending ? 'Sending...' : selectedIds.size > 0 ? `Send to ${selectedIds.size} Selected` : `Send to All (${leads.length})`}
+              {sending
+                ? 'Sending...'
+                : result && !result.error && selectedIds.size > 0
+                  ? `Sent to ${result.sent} Selected`
+                  : selectedIds.size > 0
+                    ? `Send to ${selectedIds.size} Selected`
+                    : `Send to All (${leads.length})`}
             </button>
           </div>
 
