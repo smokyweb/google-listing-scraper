@@ -17,7 +17,12 @@ function getSignalWireConfig() {
 function resolvePhoneNumber(phoneNumberId, fallback) {
   if (phoneNumberId) { const r = db.prepare('SELECT number FROM phone_numbers WHERE id=?').get(phoneNumberId); if (r) return r.number; }
   const def = db.prepare('SELECT number FROM phone_numbers WHERE is_default=1 LIMIT 1').get();
-  return def?.number || fallback;
+  if (def?.number) return def.number;
+
+  // Older/imported databases may have SignalWire numbers but no default flag.
+  // Use the first configured SignalWire number before falling back to Settings.
+  const firstConfigured = db.prepare("SELECT number FROM phone_numbers WHERE provider = 'signalwire' AND number IS NOT NULL AND number != '' ORDER BY id LIMIT 1").get();
+  return firstConfigured?.number || fallback;
 }
 function normalizePhone(raw) {
   if (!raw) return '';
@@ -65,6 +70,10 @@ router.post('/send', authMiddleware, async (req, res) => {
     const config = getSignalWireConfig();
     const fromNumber = resolvePhoneNumber(phoneNumberId, config.phoneNumber);
     const isMock = !config.projectId || !config.token;
+
+    if (!isMock && (!config.spaceUrl || !fromNumber)) {
+      return res.status(400).json({ error: 'SignalWire is configured but no sending phone number is available. Set a default number in Phone Numbers or add one in Settings.' });
+    }
 
     let leads;
     if (leadIds?.length > 0) {
@@ -137,6 +146,10 @@ router.post('/reply', authMiddleware, async (req, res) => {
     const config = getSignalWireConfig();
     const fromNumber = resolvePhoneNumber(phoneNumberId, config.phoneNumber);
     const isMock = !config.projectId || !config.token;
+
+    if (!isMock && (!config.spaceUrl || !fromNumber)) {
+      return res.status(400).json({ error: 'SignalWire is configured but no sending phone number is available. Set a default number in Phone Numbers or add one in Settings.' });
+    }
 
     // Save outbound to inbox
     const lead = findLeadByPhone(to);
