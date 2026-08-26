@@ -202,7 +202,9 @@ router.post('/sync', authMiddleware, async (req, res) => {
               'Content-Type': 'application/x-www-form-urlencoded',
               'Accept': 'application/json',
             },
-            body: new URLSearchParams({ VoiceUrl: inboundVoiceUrl, VoiceMethod: 'POST' }),
+            // Clear any legacy VoiceApplicationSid: SignalWire may prefer the
+            // application over VoiceUrl when both are present.
+            body: new URLSearchParams({ VoiceUrl: inboundVoiceUrl, VoiceMethod: 'POST', VoiceApplicationSid: '' }),
           }
         );
         if (updateResp.ok) configured++;
