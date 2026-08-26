@@ -94,6 +94,17 @@ function normalizePhone(raw) {
   return raw.replace(/\D/g, '').slice(-10);
 }
 
+// SignalWire <Dial> destinations must be sent as valid E.164 numbers. Admin
+// settings historically allowed 10-digit values, which made fallback routes
+// fail even though assigned salesperson numbers happened to work.
+function normalizeDialNumber(raw) {
+  if (!raw) return '';
+  const digits = String(raw).replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return String(raw).trim();
+}
+
 function findLeadByPhone(phone) {
   const n = normalizePhone(phone);
   if (!n) return null;
@@ -510,13 +521,13 @@ router.post('/ivr-handler', async (req, res) => {
   if (!digit) {
     const lead = findLeadByPhone(fromPhone);
     const calledNum = req.body.To || '';
-    let inboundForward = transferNumber;
+    let inboundForward = normalizeDialNumber(transferNumber);
     try {
       const calledNorm = calledNum.replace(/\D/g, '').slice(-10);
       const phoneEntry = db.prepare("SELECT * FROM phone_numbers WHERE replace(replace(replace(replace(replace(number,'(',''),')',''),'-',''),' ',''),'+','') LIKE ?").get('%' + calledNorm);
       if (phoneEntry) {
         const sp = db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id);
-        if (sp?.forward_number) inboundForward = sp.forward_number;
+        if (sp?.forward_number) inboundForward = normalizeDialNumber(sp.forward_number);
       }
     } catch(e) {}
     console.log('[INBOUND CALL] From:', fromPhone, lead ? '(lead: '+lead.name+')' : '', '-> forward to:', inboundForward);
@@ -544,7 +555,7 @@ router.post('/ivr-handler', async (req, res) => {
   if (digit === '1') {
     logCall('transferred', '1');
     // Look up salesperson assigned to the outbound From number for per-salesperson transfer
-    let dialTo = transferNumber;
+    let dialTo = normalizeDialNumber(transferNumber);
     try {
       const outboundFrom = req.body.From || '';
       const fromNorm = outboundFrom.replace(/\D/g, '').slice(-10);
@@ -552,7 +563,7 @@ router.post('/ivr-handler', async (req, res) => {
       if (phoneEntry) {
         const sp = db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id);
         if (sp?.ivr_transfer_number || sp?.forward_number) {
-          dialTo = sp.ivr_transfer_number || sp.forward_number;
+          dialTo = normalizeDialNumber(sp.ivr_transfer_number || sp.forward_number);
           console.log('[IVR P1] Routing to salesperson', sp.name, ':', dialTo);
         }
       }
@@ -785,7 +796,7 @@ router.post('/inbound', (req, res) => {
   const globalTransfer = getSetting('transfer_phone_number') || process.env.TRANSFER_PHONE_NUMBER || '+15551234567';
 
   // Look up which phone number was called, find assigned salesperson
-  let forwardTo = globalTransfer;
+  let forwardTo = normalizeDialNumber(globalTransfer);
   let forwardName = 'staff';
   try {
     // Normalize called number for lookup
@@ -795,7 +806,7 @@ router.post('/inbound', (req, res) => {
       // Find salesperson assigned to this phone number
       const salesperson = db.prepare('SELECT * FROM sales_users WHERE phone_number_id = ? AND is_active = 1 LIMIT 1').get(phoneEntry.id);
       if (salesperson?.forward_number) {
-        forwardTo = salesperson.forward_number;
+        forwardTo = normalizeDialNumber(salesperson.forward_number);
         forwardName = salesperson.name;
         console.log('[INBOUND] Called:', calledNumber, '-> routed to', salesperson.name, ':', forwardTo);
       } else if (salesperson) {
