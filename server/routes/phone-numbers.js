@@ -177,13 +177,37 @@ router.post('/sync', authMiddleware, async (req, res) => {
     const swNumberSet = new Set(swNumbers.map(n => n.phone_number));
 
     // Add new numbers from SignalWire
-    let added = 0, skipped = 0, removed = 0;
+    let added = 0, skipped = 0, removed = 0, configured = 0;
+    const publicBaseUrl = (process.env.BASE_URL || 'https://listing-scraper.bluesapps.com').replace(/\/$/, '');
+    const inboundVoiceUrl = `${publicBaseUrl}/api/calls/inbound`;
     const upsert = db.prepare('INSERT OR IGNORE INTO phone_numbers (label, number, provider) VALUES (?, ?, ?)');
     for (const num of swNumbers) {
       const e164 = num.phone_number;
       const label = num.friendly_name || e164;
       const r = upsert.run(label, e164, 'signalwire');
       if (r.changes > 0) added++; else skipped++;
+
+      // A number can be assigned in this app and still have no SignalWire
+      // webhook. Configure every synced number so callbacks route to the
+      // salesperson who owns it. SignalWire identifies incoming numbers by
+      // their resource SID (usually `sid`; tolerate API variants too).
+      const numberSid = num.sid || num.incoming_phone_number_sid || num.id;
+      if (numberSid) {
+        const updateResp = await fetch(
+          `https://${spaceUrl}/api/laml/2010-04-01/Accounts/${projectId}/IncomingPhoneNumbers/${numberSid}.json`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': authHeader,
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Accept': 'application/json',
+            },
+            body: new URLSearchParams({ VoiceUrl: inboundVoiceUrl, VoiceMethod: 'POST' }),
+          }
+        );
+        if (updateResp.ok) configured++;
+        else console.error(`SignalWire webhook update failed for ${e164}: ${updateResp.status}`);
+      }
     }
 
     // Remove numbers that are no longer in SignalWire (provider = signalwire only)
@@ -197,7 +221,7 @@ router.post('/sync', authMiddleware, async (req, res) => {
       }
     }
 
-    res.json({ synced: swNumbers.length, added, skipped, removed });
+    res.json({ synced: swNumbers.length, added, skipped, removed, configured, inboundVoiceUrl });
   } catch (err) {
     console.error('SignalWire sync error:', err.message);
     res.status(500).json({ error: err.message });
