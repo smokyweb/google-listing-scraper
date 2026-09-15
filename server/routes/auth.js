@@ -29,7 +29,10 @@ router.post('/salesperson-login', (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
-  const user = db.prepare('SELECT * FROM sales_users WHERE email = ? AND is_active = 1').get(email.toLowerCase().trim());
+  // Email addresses are case-insensitive. Older users were created before the
+  // admin form normalized email casing, so normalize at lookup time as well.
+  const normalizedEmail = email.toLowerCase().trim();
+  const user = db.prepare('SELECT * FROM sales_users WHERE lower(trim(email)) = ? AND is_active = 1').get(normalizedEmail);
   if (!user) return res.status(401).json({ error: 'Invalid email or password' });
 
   const hashed = hashPassword(password);

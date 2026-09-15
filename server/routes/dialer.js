@@ -7,10 +7,12 @@ function getSetting(key) {
   return row?.value || null;
 }
 function getSignalWireConfig() {
+  const rawSpaceUrl = process.env.SIGNALWIRE_SPACE_URL || getSetting('signalwire_space_url');
   return {
     projectId: process.env.SIGNALWIRE_PROJECT_ID || getSetting('signalwire_project_id'),
     token: process.env.SIGNALWIRE_TOKEN || getSetting('signalwire_token'),
-    spaceUrl: process.env.SIGNALWIRE_SPACE_URL || getSetting('signalwire_space_url'),
+    // Accept either `example.signalwire.com` or a pasted https URL.
+    spaceUrl: String(rawSpaceUrl || '').replace(/^https?:\/\//i, '').replace(/\/+$/, ''),
     phoneNumber: process.env.SIGNALWIRE_PHONE_NUMBER || getSetting('signalwire_phone_number'),
   };
 }
@@ -74,7 +76,15 @@ router.post('/call', authMiddleware, async (req, res) => {
         return res.status(400).json({ error: 'Your assigned phone number could not be found. Please contact your administrator.' });
       }
       fromNumber = assignedNum.number;
-      resolvedAgentNumber = resolvedAgentNumber || sp.forward_number || getSetting('transfer_phone_number');
+      // A salesperson must be reached on their own forwarding number. The
+      // global transfer number is an admin fallback and can silently route a
+      // salesperson's call to the wrong person.
+      resolvedAgentNumber = resolvedAgentNumber || sp.forward_number;
+      if (!resolvedAgentNumber) {
+        return res.status(400).json({
+          error: 'Your forward number is not configured. Open My Settings and add the phone that should ring when you place a call.',
+        });
+      }
     } else {
       fromNumber = resolveFromNumber(fromNumberId);
       resolvedAgentNumber = resolvedAgentNumber || getSetting('transfer_phone_number');
