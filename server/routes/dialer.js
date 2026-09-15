@@ -125,8 +125,10 @@ router.post('/call', authMiddleware, async (req, res) => {
 <Response>
   <Say voice="alice">Connecting you to ${leadLabel}. Stand by.</Say>
   <Pause length="2"/>
-  <Dial callerId="${fromNumber}">${toNormalized}</Dial>
+  <Dial answerOnBridge="true" timeout="45" callerId="${fromNumber}">${toNormalized}</Dial>
 </Response>`;
+
+      console.log(`[Dialer] Salesperson bridge: agent=${agentNorm} lead=${toNormalized} from=${fromNumber}`);
 
       // Call the agent's number first
       const resp = await fetch(`https://${config.spaceUrl}/api/laml/2010-04-01/Accounts/${config.projectId}/Calls.json`, {
@@ -135,7 +137,10 @@ router.post('/call', authMiddleware, async (req, res) => {
         body: new URLSearchParams({ From: fromNumber, To: agentNorm, Twiml: twiml }),
       });
       const data = await resp.json();
-      if (!resp.ok) return res.status(400).json({ error: data.message || 'Call failed', detail: data });
+      if (!resp.ok) {
+        console.error('[Dialer] SignalWire bridge rejected:', resp.status, data);
+        return res.status(400).json({ error: data.message || 'Call failed', detail: data });
+      }
       if (leadId) db.prepare("UPDATE leads SET call_status='called', called_at=datetime('now') WHERE id=?").run(leadId);
       return res.json({ success: true, sid: data.sid, mode: 'agent-first' });
     } else {
