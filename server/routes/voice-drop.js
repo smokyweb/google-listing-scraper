@@ -60,12 +60,22 @@ function getSetting(key) {
 }
 
 function getSignalWireConfig() {
+  const rawSpaceUrl = process.env.SIGNALWIRE_SPACE_URL || getSetting('signalwire_space_url');
   return {
     projectId: process.env.SIGNALWIRE_PROJECT_ID || getSetting('signalwire_project_id'),
     token: process.env.SIGNALWIRE_TOKEN || getSetting('signalwire_token'),
-    spaceUrl: process.env.SIGNALWIRE_SPACE_URL || getSetting('signalwire_space_url'),
+    // Settings accepts either `example.signalwire.com` or a pasted URL.
+    // Keep the REST URL construction below from producing https://https://...
+    spaceUrl: String(rawSpaceUrl || '').replace(/^https?:\/\//i, '').replace(/\/+$/, ''),
     phoneNumber: process.env.SIGNALWIRE_PHONE_NUMBER || getSetting('signalwire_phone_number'),
   };
+}
+
+function isAnsweredCallStatus(status) {
+  // SignalWire's Compatibility API commonly reports an answered outbound
+  // leg as `in-progress`, while some accounts send the explicit `answered`
+  // value. Both mean the remote party has picked up.
+  return status === 'answered' || status === 'in-progress';
 }
 
 function getElevenLabsConfig() {
@@ -626,7 +636,7 @@ router.get('/session/:id', authMiddleware, async (req, res) => {
   // lead-drop controls even though the salesperson never received the call.
   if (session.mode === 'agent' && session.agent_call_sid && session.state === 'initiated') {
     const agentStatus = await fetchCallStatus(getSignalWireConfig(), session.agent_call_sid);
-    if (agentStatus === 'answered') {
+    if (isAnsweredCallStatus(agentStatus)) {
       updateSession(session.id, { state: 'agent_answered' });
       session.state = 'agent_answered';
       try {
@@ -660,7 +670,7 @@ router.get('/session/:id', authMiddleware, async (req, res) => {
     // being established on some Compatibility API accounts. Only the
     // explicit answered callback is safe for enabling the salesperson's
     // drop controls; otherwise the UI can claim the lead answered early.
-    if (leadStatus === 'answered') {
+    if (isAnsweredCallStatus(leadStatus)) {
       updateSession(session.id, { state: 'recipient_answered' });
       session.state = 'recipient_answered';
     } else if (['no-answer', 'busy', 'failed', 'canceled', 'completed'].includes(leadStatus)) {
@@ -852,7 +862,7 @@ router.post('/webhook/call-status', async (req, res) => {
   // Only an explicit `answered` callback confirms that the remote party has
   // answered. `in-progress` is also used for an outbound leg that is still
   // being established by some Compatibility API accounts.
-  const callAnswered = CallStatus === 'answered';
+  const callAnswered = isAnsweredCallStatus(CallStatus);
 
   if (!sessionId || !leg) {
     console.warn('[VoiceDrop webhook] Missing sid or leg');
