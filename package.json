@@ -1,14 +1,9 @@
 {
-  "name": "google-listing-scraper",
+  "name": "project",
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "server": "node server/index.js",
-    "client": "cd client && npm run dev",
-    "build": "cd client && npm run build",
-    "start": "node server/index.js",
-    "install:all": "npm install && cd client && npm install"
+    "postinstall": "git config core.hooksPath .githooks && chmod +x .githooks/*"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
