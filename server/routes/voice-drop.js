@@ -285,6 +285,26 @@ function agentConferenceTwiml(confName) {
 }
 
 /**
+ * Prompt the salesperson to explicitly accept the forwarded call.
+ * A provider answered/in-progress status only means the call leg connected;
+ * it must not be used as permission to dial the lead.
+ */
+function agentAcceptanceTwiml(sessionId, baseUrl, retry = false) {
+  const action = `${baseUrl}/api/voice-drop/webhook/agent-accept?sid=${encodeURIComponent(sessionId)}`;
+  const prompt = retry
+    ? 'That was not a valid choice. Press 1 to accept this live voice message call.'
+    : 'This is a live voice message call. Press 1 to accept and connect to the lead.';
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?><Response>` +
+    `<Gather input="dtmf" numDigits="1" action="${action}" method="POST" timeout="15">` +
+    `<Say voice="alice">${prompt}</Say>` +
+    `</Gather>` +
+    `<Say voice="alice">We did not receive your acceptance. Goodbye.</Say><Hangup/>` +
+    `</Response>`
+  );
+}
+
+/**
  * Conference TwiML for the RECIPIENT (lead) leg.
  * The recipient joins normally — they will hear whatever is played to the conference.
  * No audio is played until the agent triggers the drop.
@@ -594,7 +614,7 @@ router.post('/start', authMiddleware, async (req, res) => {
     const agentCall = await placeCall(config, {
       from: fromNumber,
       to: agentPhone,
-      twiml: agentConferenceTwiml(confName),
+      twiml: agentAcceptanceTwiml(sessionId, baseUrl),
       statusCallback: `${baseUrl}/api/voice-drop/webhook/call-status?sid=${sessionId}&leg=agent`,
       statusCallbackEvent: 'answered',
     });
@@ -603,9 +623,9 @@ router.post('/start', authMiddleware, async (req, res) => {
       `[VoiceDrop][agent] Session ${sessionId}: calling agent ${agentPhone} SID=${agentCall.sid}`
     );
 
-    // The lead leg is started after the salesperson answers. Keeping the
-    // legs sequential avoids dialing both parties before the agent is ready
-    // and makes a missing salesperson call unambiguous.
+    // The lead leg is started only by the agent-accept callback after the
+    // salesperson presses 1. Keeping the legs sequential prevents a missed
+    // or voicemail-forwarded call from dialing the lead.
 
     // Pre-generate audio in background
     generateElevenLabsAudio(resolvedScript, baseUrl)
@@ -631,29 +651,11 @@ router.get('/session/:id', authMiddleware, async (req, res) => {
   if (!session) return res.status(404).json({ error: 'Session not found' });
   if (!canAccessSession(session, req.user)) return res.status(403).json({ error: 'Forbidden' });
 
-  // Reconcile from SignalWire when a provider callback was dropped. The
-  // salesperson leg is checked first; otherwise the session could expose
-  // lead-drop controls even though the salesperson never received the call.
+  // Reconcile terminal agent statuses, but never treat answered/in-progress
+  // as acceptance. The salesperson must press 1 in the agent-accept webhook.
   if (session.mode === 'agent' && session.agent_call_sid && session.state === 'initiated') {
     const agentStatus = await fetchCallStatus(getSignalWireConfig(), session.agent_call_sid);
-    if (isAnsweredCallStatus(agentStatus)) {
-      updateSession(session.id, { state: 'agent_answered' });
-      session.state = 'agent_answered';
-      try {
-        session.recipient_call_sid = await startRecipientLeg(
-          getSignalWireConfig(),
-          getSession(session.id),
-          PUBLIC_BASE_URL
-        );
-      } catch (err) {
-        updateSession(session.id, {
-          state: 'failed',
-          error_msg: `Failed to call lead: ${err.message}`,
-        });
-        session.state = 'failed';
-        session.error_msg = `Failed to call lead: ${err.message}`;
-      }
-    } else if (['no-answer', 'busy', 'failed', 'canceled', 'completed'].includes(agentStatus)) {
+    if (['no-answer', 'busy', 'failed', 'canceled', 'completed'].includes(agentStatus)) {
       updateSession(session.id, { state: 'failed', error_msg: `Salesperson call ${agentStatus}` });
       session.state = 'failed';
       session.error_msg = `Salesperson call ${agentStatus}`;
@@ -847,6 +849,51 @@ router.post('/cleanup', authMiddleware, (req, res) => {
   res.json({ success: true, deleted: result.changes });
 });
 
+/**
+ * SignalWire Gather callback for the salesperson acceptance gate.
+ * The lead is not dialed until Digits === '1'.
+ */
+router.post('/webhook/agent-accept', async (req, res) => {
+  const sessionId = req.query.sid;
+  const digits = String(req.body?.Digits || '');
+  const session = sessionId ? getSession(sessionId) : null;
+
+  if (!sessionId || !session || session.mode !== 'agent') {
+    return res.type('text/xml').send(
+      '<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">This call is no longer available. Goodbye.</Say><Hangup/></Response>'
+    );
+  }
+  if (!validateWebhook(req)) {
+    return res.type('text/xml').send(
+      '<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">This call could not be verified. Goodbye.</Say><Hangup/></Response>'
+    );
+  }
+
+  if (digits !== '1') {
+    return res.type('text/xml').send(agentAcceptanceTwiml(sessionId, PUBLIC_BASE_URL, true));
+  }
+
+  const config = getSignalWireConfig();
+  try {
+    const current = getSession(sessionId);
+    if (current.state === 'initiated') {
+      updateSession(sessionId, {
+        state: 'agent_answered',
+        agent_call_sid: req.body?.CallSid || current.agent_call_sid,
+      });
+      await startRecipientLeg(config, getSession(sessionId), PUBLIC_BASE_URL);
+      console.log(`[VoiceDrop][agent] Session ${sessionId}: salesperson accepted with DTMF 1`);
+    }
+    return res.type('text/xml').send(agentConferenceTwiml(session.conference_name));
+  } catch (err) {
+    console.error(`[VoiceDrop][agent] Acceptance failed for ${sessionId}:`, err.message);
+    updateSession(sessionId, { state: 'failed', error_msg: `Failed to call lead: ${err.message}` });
+    return res.type('text/xml').send(
+      '<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="alice">We could not connect the lead. Goodbye.</Say><Hangup/></Response>'
+    );
+  }
+});
+
 // ── POST /webhook/call-status ─────────────────────────────────────────────────
 
 /**
@@ -906,20 +953,9 @@ router.post('/webhook/call-status', async (req, res) => {
     // ── Agent mode: two legs ──────────────────────────────────────────────────
     if (leg === 'agent') {
       if (callAnswered) {
-        updateSession(sessionId, { state: 'agent_answered', agent_call_sid: CallSid });
-        // Compatibility API accounts may send this callback late.  The lead
-        // leg is normally already started by /start; this remains a safe
-        // fallback for sessions created by an older revision.
-        try {
-          await startRecipientLeg(config, getSession(sessionId), baseUrl);
-        } catch (err) {
-          console.error(`[VoiceDrop][agent] Failed to call lead:`, err.message);
-          updateSession(sessionId, {
-            state: 'failed',
-            error_msg: `Failed to call lead: ${err.message}`,
-          });
-          updateCall(config, CallSid, { status: 'completed' }).catch(() => {});
-        }
+        // Answered only means the forwarded leg connected. The salesperson
+        // must press 1 in /webhook/agent-accept before the lead is dialed.
+        updateSession(sessionId, { agent_call_sid: CallSid });
       } else if (['no-answer', 'busy', 'failed', 'canceled'].includes(CallStatus)) {
         updateSession(sessionId, {
           state: 'failed',

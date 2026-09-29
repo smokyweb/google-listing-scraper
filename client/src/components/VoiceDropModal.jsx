@@ -37,8 +37,8 @@ const LABELS = {
     mock: 'Mock mode — no call was placed.',
   },
   agent: {
-    initiated: 'Calling your forward number…',
-    agent_answered: 'Connected. Now calling the recipient…',
+    initiated: 'Calling your forward number… Press 1 on your phone to accept.',
+    agent_answered: 'Accepted. Now calling the recipient…',
     recipient_answered: 'Recipient answered — you are listening. Click Drop when ready.',
     dropping: 'Playing message to recipient…',
     completed: 'Message delivered ✓',
